@@ -1,0 +1,4 @@
+#include "Res/LVSIETestMnu.rc"
+#include "Res/LVSIETestVer.rc"
+#include "Res/LVSIETestDlg.rc"
+#include "Res/LVSIETestRes.rc"
