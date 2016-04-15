@@ -4,6 +4,7 @@ fearless 2016 - [www.LetTheLight.in](http://www.LetTheLight.in)
 
 ## Overview
 
+![Image of LVSIE](https://github.com/mrfearless/ListViewSubItemEdit/blob/master/lvsie.png) 
 ListViewSubItemEdit is a library (for Masm, but may work with other compilers) containing functions to easily allow you to edit items and subitems in a listview. 
 
 It dynamically creates a specified child control (edit, combo etc) in the place of the item and subitem that was clicked. 
