@@ -10,7 +10,7 @@ ENDIF
 option casemap:none
 include \masm32\macros\macros.asm
 
-DEBUG32 EQU 1
+;DEBUG32 EQU 1
 
 IFDEF DEBUG32
     PRESERVEXMMREGS equ 1
@@ -56,7 +56,9 @@ LVSIE_ComboControlProc      PROTO :DWORD, :DWORD, :DWORD, :DWORD, :DWORD, :DWORD
 LVSIE_LVComboControlProc    PROTO :DWORD, :DWORD, :DWORD, :DWORD, :DWORD, :DWORD
 
 ; Experimental tab to next cell
+LVSIE_SetNextItem           PROTO :DWORD, :DWORD, :DWORD, :DWORD, :DWORD
 LVSIE_GetNextCell           PROTO :DWORD, :DWORD, :DWORD, :DWORD, :DWORD, :DWORD
+
 
 IFDEF LVSIELIB
 ListViewGetItemRect         PROTO :DWORD, :DWORD, :DWORD
@@ -67,6 +69,7 @@ ListViewGetColumnWidth      PROTO :DWORD, :DWORD
 ListViewGetColumnFormat     PROTO :DWORD, :DWORD
 ListViewGetColumnCount      PROTO :DWORD
 ListViewGetItemCount        PROTO :DWORD
+ListViewEnsureSubItemVisible PROTO :DWORD, :DWORD
 ENDIF
 
 
@@ -131,10 +134,15 @@ INPUT_MOUSE     equ 0
 INPUT_KEYBOARD  equ 1
 INPUT_HARDWARE  equ 2
 
+LVSIE_RIGHT             EQU 0
+LVSIE_LEFT              EQU 1
+LVSIE_DOWN              EQU 2
+LVSIE_UP                EQU 3
+
 
 .DATA
 szLVSIEEditClass        DB 'Edit',0
-
+lvsienmia               NMITEMACTIVATE <>
 
 .DATA?
 
@@ -192,14 +200,28 @@ ListViewSubItemEdit PROC USES EBX ECX lpLVSIE:DWORD
     
     mov eax, dwControlType
     .IF eax == LVSIC_EDIT
+    
+        Invoke GetDlgItem, hListview, 1
+        .IF eax != NULL
+            IFDEF DEBUG32
+            PrintText 'GetDlgItem, hListview, 1 found'
+            PrintDec eax
+            ENDIF
+        .ENDIF
+    
         Invoke LVSIE_CreateEditControl, SubClassData
     .ENDIF
 
-
+    .IF eax == NULL
+        Invoke GlobalFree, SubClassData
+        mov eax, NULL
+        ret
+    .ENDIF
     
     ret
 
 ListViewSubItemEdit ENDP
+
 
 ;-------------------------------------------------------------------------------------
 ; Create edit control for listview subitem editing
@@ -280,7 +302,10 @@ LVSIE_CreateEditControl PROC USES EBX lpSubClassData
     
     ; If control created succesfully we fill in some info into our subclass data area
     mov hControl, eax
+    invoke SetFocus, hControl ; do this before any subclassing, that way if an existing control exists, for whatever reason, setting focus on this, should destroy old one.
+    
     mov ebx, lpSubClassData
+    mov eax, hControl
     mov [ebx].LVSIEDATA.hControl, eax
     mov eax, rect.bottom
     mov [ebx].LVSIEDATA.dwControlRect.bottom, eax
@@ -303,13 +328,12 @@ LVSIE_CreateEditControl PROC USES EBX lpSubClassData
 	Invoke SendMessage, hControl, WM_SETTEXT, 0, lpszItemText
 	Invoke SendMessage, hControl, EM_SETMARGINS, EC_LEFTMARGIN + EC_RIGHTMARGIN, 00010001h
 	Invoke SendMessage, hControl, EM_SETSEL, 0, -1
-	invoke SetFocus, hControl
 	Invoke SendMessage, hControl, WM_INITDIALOG, 0, 0
 	.IF eax == FALSE ; if user returned false from their lpControlInitProc we destroy editbox and return
 	    xor eax, eax
 	.ELSE
         mov eax, hControl ; else control is created and handle is passed back for user to use if required
-        PrintDec hControl
+        ;PrintDec hControl
     .ENDIF
     
     ret
@@ -494,6 +518,38 @@ LVSIE_EditControlProc PROC USES EBX ECX hWin:HWND, uMsg:UINT, wParam:WPARAM, lPa
             Invoke SendMessage, hWin, WM_CLOSE, 0, 0
             ret
         
+        .ELSEIF wParam == VK_DOWN || wParam == VK_UP
+            Invoke GetKeyState, VK_SHIFT
+            AND eax, 08000h
+            .IF eax == 08000h
+                mov ebx, dwRefData
+                mov eax, TRUE
+                mov [ebx].LVSIEDATA.dwChangesToSave, eax ; tell control we DO have something to save
+                mov eax, [ebx].LVSIEDATA.iItem
+                mov iItem, eax
+                mov eax, [ebx].LVSIEDATA.iSubItem
+                mov iSubItem, eax
+                mov eax, [ebx].LVSIEDATA.hListview
+                mov hListview, eax
+                ;mov eax, [ebx].LVSIEDATA.hControl
+                ;mov hControl, eax
+                mov eax, [ebx].LVSIEDATA.hHeader
+                mov hHeader, eax
+                mov eax, [ebx].LVSIEDATA.dwAllowWraparound
+                mov dwAllowWraparound, eax
+                
+                .IF wParam == VK_DOWN
+                    mov eax, LVSIE_DOWN
+                .ELSE
+                    mov eax, LVSIE_UP
+                .ENDIF
+                Invoke LVSIE_SetNextItem, hListview, iItem, iSubItem, dwAllowWraparound, eax
+                .IF eax == TRUE
+                    Invoke SendMessage, hWin, WM_CLOSE, 0, 0
+                    ret
+                .ENDIF
+            .ENDIF
+        
         .ELSEIF wParam == VK_TAB
             mov ebx, dwRefData
             mov eax, TRUE
@@ -510,9 +566,20 @@ LVSIE_EditControlProc PROC USES EBX ECX hWin:HWND, uMsg:UINT, wParam:WPARAM, lPa
             mov hHeader, eax
             mov eax, [ebx].LVSIEDATA.dwAllowWraparound
             mov dwAllowWraparound, eax
-            Invoke LVSIE_GetNextCell, hListview, hHeader, hWin, iItem, iSubItem, dwAllowWraparound ;hControl
-            Invoke SendMessage, hWin, WM_CLOSE, 0, 0
-            ret        
+            ;Invoke LVSIE_GetNextCell, hListview, hHeader, hWin, iItem, iSubItem, dwAllowWraparound ;hControl
+
+            Invoke GetKeyState, VK_SHIFT
+            AND eax, 08000h
+            .IF eax == 08000h
+                mov eax, LVSIE_LEFT
+            .ELSE
+                mov eax, LVSIE_RIGHT
+            .ENDIF
+            Invoke LVSIE_SetNextItem, hListview, iItem, iSubItem, dwAllowWraparound, eax
+            .IF eax == TRUE
+                Invoke SendMessage, hWin, WM_CLOSE, 0, 0
+                ret
+            .ENDIF
         
         .ELSEIF wParam == VK_RETURN
             mov ebx, dwRefData
@@ -541,14 +608,30 @@ LVSIE_EditControlProc ENDP
 ; Listview subclass to forward on wm_command and wm_notify events for LVSIE_EditControlProc
 ;-------------------------------------------------------------------------------------
 LVSIE_LVEditControlProc PROC USES EBX hWin:HWND, uMsg:UINT, wParam:WPARAM, lParam:LPARAM, uIdSubclass:UINT, dwRefData:DWORD
-
+    LOCAL nScrollCode:DWORD
+    LOCAL nPos:DWORD
     mov eax, uMsg
     .IF eax == WM_NCDESTROY
         Invoke RemoveWindowSubclass, hWin, Offset LVSIE_LVEditControlProc, uIdSubclass
         
     .ELSEIF eax == WM_COMMAND || eax == WM_NOTIFY ; pass this back to our editbox proc
         Invoke LVSIE_EditControlProc, hWin, uMsg, wParam, lParam, uIdSubclass, dwRefData
-
+    
+    .ELSEIF eax == WM_HSCROLL || eax == WM_VSCROLL ; set focus to listview to destroy our control otherwise weird stuff happends (similar to listview col resizing)
+        mov ebx, dwRefData
+        mov eax, [ebx].LVSIEDATA.hListview
+        Invoke SetFocus, eax
+         
+;		mov eax, wParam
+;		shr eax, 16
+;		mov nPos, eax
+;		mov eax, wParam
+;		and eax, 0FFFFh
+;		mov nScrollCode, eax
+;        
+;        PrintDec nScrollCode
+;        PrintDec nPos
+    
     .ENDIF
     
     Invoke DefSubclassProc, hWin, uMsg, wParam, lParam
@@ -557,7 +640,166 @@ LVSIE_LVEditControlProc PROC USES EBX hWin:HWND, uMsg:UINT, wParam:WPARAM, lPara
 LVSIE_LVEditControlProc ENDP
 
 
+;-------------------------------------------------------------------------------------
+;
+;-------------------------------------------------------------------------------------
+LVSIE_SetNextItem PROC USES EBX hListview:DWORD, iItem:DWORD, iSubItem:DWORD, dwWrapAround:DWORD, dwDirection:DWORD
+    LOCAL nTotalCols:DWORD
+    LOCAL nTotalRows:DWORD
+    LOCAL nNextItem:DWORD
+    LOCAL nNextSubItem:DWORD
+    LOCAL hLVParent:DWORD
+    
+    IFDEF DEBUG32
+    PrintLine
+    .IF dwDirection == 0
+        PrintText 'Right'
+    .ELSEIF dwDirection == 1
+        PrintText 'Left'
+    .ELSEIF dwDirection == 2
+        PrintText 'Down'
+    .ELSEIF dwDirection == 3
+        PrintText 'Up'
+    .ENDIF
+    ENDIF
+    
+    Invoke GetParent, hListview
+    mov hLVParent, eax
+    
+    Invoke ListViewGetColumnCount, hListview
+    mov nTotalCols, eax
+    Invoke ListViewGetItemCount, hListview
+    mov nTotalRows, eax
+    
+    mov eax, dwDirection
+    .IF eax == 0 ; right - default - tab
+    
+        mov eax, nTotalCols
+        dec eax ; for 0 based cols
+        mov ebx, iSubItem
+        inc ebx
+        .IF ebx <= eax
+            mov nNextSubItem, ebx
+            mov eax, iItem
+            mov nNextItem, eax
+        .ELSE
+            .IF dwWrapAround == TRUE ; wrap to next line down, 0 subitem
+                mov nNextSubItem, 0
+                mov eax, nTotalRows
+                dec eax ; for 0 based rows
+                mov ebx, iItem
+                inc ebx
+                .IF ebx <= eax
+                    mov nNextItem, ebx
+                .ELSE
+                    mov nNextItem, 0 ; at last cell so go back to 0,0
+                .ENDIF
+            .ELSE
+                Invoke GetNextDlgTabItem, hLVParent, hListview, FALSE
+                mov eax, FALSE
+                ret
+            .ENDIF
+        .ENDIF
+    
+    .ELSEIF eax == 1 ; left (back) - shift+tab
+        
+        mov eax, nTotalCols
+        dec eax ; for 0 based cols
+        mov ebx, iSubItem
+        dec ebx
+        .IF sdword ptr ebx >= 0
+            mov nNextSubItem, ebx
+            mov eax, iItem
+            mov nNextItem, eax            
+        .ELSE
+            .IF dwWrapAround == TRUE ; wrap to next line up, total cols-1 subitem
+                mov eax, nTotalCols
+                dec eax ; for 0 based col count
+                mov nNextSubItem, eax
+                
+                mov eax, nTotalRows
+                dec eax ; for 0 based rows
+                mov ebx, iItem
+                dec ebx
+                .IF sdword ptr ebx >= 0
+                    mov nNextItem, ebx
+                .ELSE
+                    mov eax, nTotalRows
+                    dec eax ; for 0 based row count
+                    mov nNextItem, eax ; at first cell 0,0 so go back to totalrows-1, totalcols-1
+                .ENDIF
+            .ELSE
+                Invoke GetNextDlgTabItem, hLVParent, hListview, TRUE
+                mov eax, FALSE
+                ret
+            .ENDIF
+        .ENDIF
+    
+    .ELSEIF eax == 2 ; down
+        mov eax, iSubItem
+        mov nNextSubItem, eax
+        
+        mov eax, nTotalRows
+        dec eax ; for 0 based rows
+        mov ebx, iItem
+        inc ebx
+        .IF ebx <= eax
+            mov nNextItem, ebx
+        .ELSE
+            .IF dwWrapAround == TRUE ; wrap to first line
+                mov nNextItem, 0
+             .ELSE
+                mov eax, FALSE
+                ret
+            .ENDIF
+        .ENDIF
+    
+    .ELSEIF eax == 3 ; up
+        mov eax, iSubItem
+        mov nNextSubItem, eax
 
+        mov eax, nTotalRows
+        dec eax ; for 0 based rows
+        mov ebx, iItem
+        dec ebx
+        .IF sdword ptr ebx >= 0
+            mov nNextItem, ebx
+        .ELSE
+            .IF dwWrapAround == TRUE ; wrap to last line
+                mov eax, nTotalRows
+                dec eax ; for 0 based row count
+                mov nNextItem, eax
+             .ELSE
+                mov eax, FALSE
+                ret
+            .ENDIF
+        .ENDIF
+    
+    .ENDIF
+
+    IFDEF DEBUG32
+    PrintDec nNextItem
+    PrintDec nNextSubItem
+    ENDIF
+    
+    Invoke SendMessage, hListview, LVM_ENSUREVISIBLE, nNextItem, TRUE
+    Invoke ListViewEnsureSubItemVisible, hListview, nNextSubItem
+    
+    ; generate our fake NM_CLICK to activate next cell
+    lea ebx, lvsienmia
+    mov eax, hListview
+    mov [ebx].NMITEMACTIVATE.hdr.hwndFrom, eax
+    mov [ebx].NMITEMACTIVATE.hdr.code, NM_CLICK
+    mov eax, nNextItem
+    mov [ebx].NMITEMACTIVATE.iItem, eax
+    mov eax, nNextSubItem
+    mov [ebx].NMITEMACTIVATE.iSubItem, eax
+    
+    Invoke SendMessage, hLVParent, WM_NOTIFY, hListview, Addr lvsienmia
+    mov eax, TRUE
+    ret
+
+LVSIE_SetNextItem ENDP
 
 
 ;-------------------------------------------------------------------------------------
@@ -894,6 +1136,11 @@ ListViewGetItemCount ENDP
 ; Returns true if an item and/or sub item have been clicked or false otherwise
 ; if true the buffers pointed to by lpdwItem and lpdwSubItem will contain
 ; the item and subitem clicked, otherwise they will contain -1
+;
+; Uses LVM_SUBITEMHITTEST to determine iItem and iSubItem.
+; To fake NM_CLICK calls use ListViewGetItemClicked instead
+; As that will use the NMITEMACTIVATE structure of NM_CLICK to retrieve
+; the iItem and iSubItem values.
 ;**************************************************************************	
 ListViewGetSubItemClicked PROC USES EBX hListview:DWORD, lpdwItem:DWORD, lpdwSubItem:DWORD
     LOCAL lvhi:LVHITTESTINFO
@@ -931,6 +1178,131 @@ ListViewGetSubItemClicked PROC USES EBX hListview:DWORD, lpdwItem:DWORD, lpdwSub
     ret
 
 ListViewGetSubItemClicked ENDP
+
+
+;**************************************************************************	
+; Get the item and subitem clicked.
+; Returns true if an item and/or sub item have been clicked or false otherwise
+; if true the buffers pointed to by lpdwItem and lpdwSubItem will contain
+; the item and subitem clicked, otherwise they will contain -1
+;
+; This is different than the ListViewGetSubItemClicked function, which uses
+; LVM_SUBITEMHITTEST to determine iItem and iSubItem.
+;
+; This function uses the NMITEMACTIVATE structure of NM_CLICK to retrieve
+; the iItem and iSubItem values.
+; Thus allowing us to fake NM_CLICK calls if required (tab, shift-tab
+; in listview to go forward, backward to next/prev subitem)
+;
+; It requires you pass the lParam value for it to work.
+;
+;**************************************************************************	
+ListViewGetItemClicked PROC USES EBX ECX hListview:DWORD, lParam:DWORD, lpdwItem:DWORD, lpdwSubItem:DWORD
+    LOCAL iItem:DWORD
+    LOCAL iSubItem:DWORD
+    
+    mov ecx, lParam
+    mov ebx, [ecx].NMHDR.hwndFrom
+    mov eax, [ecx].NMHDR.code
+        
+    .IF ebx != hListview
+        jmp ExitFalse
+    .ENDIF
+	.IF eax != NM_CLICK
+	    jmp ExitFalse
+	.ENDIF
+
+	mov eax, (NMITEMACTIVATE ptr [ecx]).iItem
+	mov iItem, eax
+	mov eax, (NMITEMACTIVATE ptr [ecx]).iSubItem
+	mov iSubItem, eax
+
+ExitTrue:
+
+
+    .IF eax == -1
+        jmp ExitFalse
+    .ENDIF
+    mov eax, iItem
+    mov ebx, lpdwItem
+    .IF ebx != NULL
+        mov [ebx], eax
+    .ENDIF
+    mov eax, iSubItem
+    mov ebx, lpdwSubItem
+    .IF ebx != NULL
+        mov [ebx], eax
+    .ENDIF
+    
+    mov eax, TRUE
+    jmp Exit
+
+ExitFalse:
+
+    mov eax, -1
+    mov ebx, lpdwItem
+    .IF ebx != NULL
+        mov [ebx], eax
+    .ENDIF
+    mov ebx, lpdwSubItem
+    .IF ebx != NULL
+        mov [ebx], eax
+    .ENDIF
+    mov eax, FALSE
+
+Exit:    
+    
+    ret
+
+ListViewGetItemClicked ENDP
+
+;**************************************************************************	
+; Ensures sub item is visible in listview
+;**************************************************************************	
+ListViewEnsureSubItemVisible PROC hListview:DWORD, nSubItemIndex:DWORD
+    LOCAL rectlv:RECT
+    LOCAL rectsubitem:RECT
+
+    Invoke GetWindowLong, hListview, GWL_STYLE
+    and eax, WS_HSCROLL
+    .IF eax != WS_HSCROLL ; no scrollbar should mean we dont have to adjust anything for subitem
+        ret
+    .ENDIF
+
+    ; Get area to put our editbox in
+ 	.IF nSubItemIndex == 0 ; LVM_GETSUBITEMRECT doesnt work with iSubItem == 0 so we calc it another way
+	    mov rectsubitem.left, LVIR_BOUNDS
+	    Invoke ListViewGetItemRect, hListview, 0, Addr rectsubitem
+	    Invoke ListViewGetColumnWidth, hListview, 0
+	    mov rectsubitem.right, eax
+	.ELSE
+    	mov eax, nSubItemIndex
+    	mov rectsubitem.top, eax
+    	mov rectsubitem.left, LVIR_BOUNDS
+    	Invoke ListViewGetSubItemRect, hListview, 0, Addr rectsubitem
+    .ENDIF
+
+    Invoke GetClientRect, hListview, Addr rectlv
+    
+    mov eax, rectsubitem.right
+    .IF eax > rectlv.right ;truerectlvright ;rectlv.right
+        ;PrintText 'Need to move scrollbar right'
+        mov eax, rectsubitem.right
+        mov ebx, rectlv.right
+        sub eax, ebx
+        Invoke SendMessage, hListview, LVM_SCROLL, eax, 0
+    .ELSE
+        .IF sdword ptr rectsubitem.left < 0
+            ;PrintText 'Need to move scrollbar left'
+            mov eax, rectsubitem.left
+            mov ebx, rectsubitem.right
+            sub eax, ebx
+            Invoke SendMessage, hListview, LVM_SCROLL, eax, 0
+        .ENDIF
+    .ENDIF
+    ret
+
+ListViewEnsureSubItemVisible ENDP
 
 ENDIF
 

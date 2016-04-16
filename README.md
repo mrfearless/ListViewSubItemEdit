@@ -14,7 +14,7 @@ It dynamically creates a specified child control (edit, combo etc) in the place 
 Once the child control loses focus - user moved to another control or clicked another part of the listview, the information in the child control updates the associated item/subitem, if any changes where made.
 A user pressing escape will cancel any modification and the child control will be destroyed. If a user presses tab or enter, any changes will be saved back to the original item/subitem of the listview.
 
-v1.0.0.0 - Last updated: 15/04/2016 - Initial commit.
+v1.0.0.1 - Last updated: 16/04/2016 - Update to fix a few things.
 
 ## Whats included in this release
 

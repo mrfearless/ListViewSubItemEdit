@@ -3,9 +3,9 @@
 ;------------------------------------------------------------------------------------------------------------------------------------------------------------
 ; Listview Sub Item Edit Prototypes
 ;------------------------------------------------------------------------------------------------------------------------------------------------------------
-ListViewSubItemEdit         PROTO :DWORD                  ; ptrLVSUBITEMEDIT. Pointer to structure containing information needed to create subitem edit control
-ListViewGetSubItemClicked   PROTO :DWORD, :DWORD, :DWORD  ; hListview, lpdwItem, lpSubItem. Returns iItem + iSubItem in the buffers. EAX == TRUE if clicked item/subitem
-
+ListViewSubItemEdit         PROTO :DWORD                        ; ptrLVSUBITEMEDIT. Pointer to structure containing information needed to create subitem edit control
+ListViewGetSubItemClicked   PROTO :DWORD, :DWORD, :DWORD        ; hListview, lpdwItem, lpSubItem. Returns iItem + iSubItem in the buffers. EAX == TRUE if clicked item/subitem
+ListViewGetItemClicked      PROTO :DWORD, :DWORD, :DWORD, :DWORD; hListview, lParam, lpdwItem, lpSubItem. Returns iItem + iSubItem in the buffers. EAX == TRUE if clicked item/subitem
 
 ;------------------------------------------------------------------------------------------------------------------------------------------------------------
 ; Listview Sub Item Edit Structure
@@ -84,7 +84,7 @@ LVSIC_DATETIME              EQU 12  ; Date & Time
 ;        mov eax, [ecx].NMHDR.code
 ;        .IF ebx == hListview
 ;	        .IF eax == NM_CLICK 
-;	            Invoke ListViewGetSubItemClicked, hListview, Addr iItem, Addr iSubItem
+;	            Invoke ListViewGetItemClicked, hListview, lParam, Addr iItem, Addr iSubItem
 ;	            .IF eax == TRUE ; user did click some item/subitem in our listview, so go ahead and display our control
 ;                    lea ebx, lvsie
 ;                    mov eax, iItem

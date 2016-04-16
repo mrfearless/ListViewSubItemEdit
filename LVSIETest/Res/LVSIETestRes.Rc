@@ -1,2 +1,3 @@
-#define MANIFEST 24
-1 MANIFEST DISCARDABLE "LVSIETest.xml"
+#define MANIFEST 						24
+1						MANIFEST  DISCARDABLE "LVSIETest.xml"
+101						ICON      DISCARDABLE "copy_cell.ico"

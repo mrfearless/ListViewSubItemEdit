@@ -35,9 +35,12 @@ TestEditProc            PROTO :DWORD,:DWORD,:DWORD,:DWORD,:DWORD,:DWORD
 ;-----------------------------------------------------------------------------------------
 ; LVSIETest Constants
 ;-----------------------------------------------------------------------------------------
+ICO_MAIN                EQU 101
+
 ; Main Dialog
 IDD_DIALOG				EQU 1000
 IDC_TESTLV              EQU 1001
+IDC_TESTBUTTON          EQU 1002
 
 ; Main Menu 
 IDM_MENU				EQU 10000
@@ -84,7 +87,7 @@ szBDSize5                   DB '2 Bytes',0 ;BIF_FILE_LOCATION
 
 
 lvsie                       LVSUBITEMEDIT <>
-
+nmia                        NMITEMACTIVATE <>
 
 .DATA?
 ;-----------------------------------------------------------------------------------------
@@ -97,6 +100,6 @@ hWnd					DD ?
 hTESTLV                 DD ?
 iItem                   DD ?
 iSubItem                DD ?
-
+hIcoMain                DD ?
 
 

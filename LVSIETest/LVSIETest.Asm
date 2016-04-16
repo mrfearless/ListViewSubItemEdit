@@ -48,7 +48,7 @@ WinMain proc hInst:HINSTANCE,hPrevInst:HINSTANCE,CmdLine:LPSTR,CmdShow:DWORD
 	LOCAL	msg:MSG
 
 	mov		wc.cbSize, sizeof WNDCLASSEX
-	mov		wc.style, CS_HREDRAW or CS_VREDRAW
+	mov		wc.style, 0 ;CS_HREDRAW or CS_VREDRAW
 	mov		wc.lpfnWndProc, offset WndProc
 	mov		wc.cbClsExtra, NULL
 	mov		wc.cbWndExtra, DLGWINDOWEXTRA
@@ -57,9 +57,9 @@ WinMain proc hInst:HINSTANCE,hPrevInst:HINSTANCE,CmdLine:LPSTR,CmdShow:DWORD
 	mov		wc.hbrBackground, COLOR_BTNFACE+1 ; COLOR_WINDOW+1
 	mov		wc.lpszMenuName, IDM_MENU
 	mov		wc.lpszClassName, offset ClassName
-	Invoke LoadIcon, NULL, IDI_APPLICATION
-	;Invoke LoadIcon, hInstance, ICO_MAIN ; resource icon for main application icon
-	;mov hIcoMain, eax ; main application icon
+	;Invoke LoadIcon, NULL, IDI_APPLICATION
+	Invoke LoadIcon, hInstance, ICO_MAIN ; resource icon for main application icon
+	mov hIcoMain, eax ; main application icon
 	mov		wc.hIcon, eax
 	mov		wc.hIconSm, eax
 	Invoke LoadCursor, NULL, IDC_ARROW
@@ -118,6 +118,22 @@ WndProc proc hWin:HWND,uMsg:UINT,wParam:WPARAM,lParam:LPARAM
         .IF ebx == hTESTLV
 
 	        .IF eax == NM_CLICK ; right click popup
+	            
+	            Invoke ListViewGetItemClicked, hTESTLV, lParam, Addr iItem, Addr iSubItem
+	            .IF eax == TRUE
+	            ;mov ecx, lParam
+	            ;mov eax, (NMITEMACTIVATE ptr [ecx]).iItem
+	            ;mov iItem, eax
+                
+                
+	            ;    mov eax, (NMITEMACTIVATE ptr [ecx]).iSubItem
+	            ;    mov iSubItem, eax
+
+	                
+	                PrintDec iItem
+	                PrintDec iSubItem
+	            
+	        
 ;	            ;PrintText 'NM_CLICK'
 ;    			invoke GetCursorPos, addr lvhi.pt
 ;    			invoke ScreenToClient, hTESTLV, addr lvhi.pt
@@ -127,17 +143,18 @@ WndProc proc hWin:HWND,uMsg:UINT,wParam:WPARAM,lParam:LPARAM
 ;    			;PrintDec lvhi.pt.y
 ;    			
 ;    			Invoke SendMessage, hTESTLV, LVM_GETITEMCOUNT, 0, 0
-;    			.IF (eax > lvhi.iItem)	            
+;    			.IF (eax > lvhi.iItem)	            ;
 ;	                mov eax, lvhi.iItem
 ;	                mov iItem, eax
 ;	                mov eax, lvhi.iSubItem
 ;	                mov iSubItem, eax
-	            
-	            Invoke ListViewGetSubItemClicked, hTESTLV, Addr iItem, Addr iSubItem
-	            .IF eax == TRUE
 	                
-	                ;PrintDec iItem
-	                ;PrintDec iSubItem
+;	                PrintDec iItem
+;	                PrintDec iSubItem
+	            
+	            ;Invoke ListViewGetSubItemClicked, hTESTLV, Addr iItem, Addr iSubItem
+	            ;.IF eax == TRUE
+
 	                
 	                lea ebx, lvsie
 	                mov eax, iItem
@@ -180,9 +197,36 @@ WndProc proc hWin:HWND,uMsg:UINT,wParam:WPARAM,lParam:LPARAM
 			
 		.ELSEIF eax == IDM_HELP_ABOUT
 			Invoke ShellAbout,hWin,addr AppName,addr AboutMsg,NULL
+		
+		.ELSEIF eax == IDC_TESTBUTTON
+		    lea ebx, nmia
+		    
+		    mov eax, hTESTLV
+		    mov [ebx].NMITEMACTIVATE.hdr.hwndFrom, eax
+		    mov [ebx].NMITEMACTIVATE.hdr.code, NM_CLICK
+		    
+		    mov eax, 2
+		    mov [ebx].NMITEMACTIVATE.iItem, eax
+		    
+		    mov eax, 2
+		    mov [ebx].NMITEMACTIVATE.iSubItem, eax
+		    
+		    Invoke SendMessage, hWin, WM_NOTIFY, hTESTLV, Addr nmia
+		    
 			
 		.ENDIF
-
+    
+    .ELSEIF eax == WM_SIZE
+        .IF wParam != SIZE_MINIMIZED
+            mov eax, lParam
+            shr eax, 16
+            sub eax, 205d
+            mov ebx, lParam
+            and ebx, 0FFFFh
+            sub ebx, 40d
+            Invoke SetWindowPos, hTESTLV, HWND_TOP, 0, 0, ebx, eax, SWP_NOMOVE + SWP_NOZORDER
+        .ENDIF  
+    
 	.ELSEIF eax == WM_CLOSE
 		Invoke DestroyWindow,hWin
 		
@@ -207,14 +251,16 @@ TestLVInit PROC hLV:DWORD
 	mov eax, LVS_EX_FULLROWSELECT or LVS_EX_INFOTIP or LVS_EX_DOUBLEBUFFER  or LVS_EX_GRIDLINES or LVS_EX_FLATSB;or LVS_EX_FULLROWSELECT or LVS_EX_FLATSB  or LVS_EX_BORDERSELECTLVS_EX_FULLROWSELECT or LVS_EX_HEADERDRAGDROP  or
 	Invoke SendMessage, hLV, LVM_SETEXTENDEDLISTVIEWSTYLE, eax, eax ; Do It
     
-    Invoke ListViewInsertColumn, hLV, LVCFMT_RIGHT, 50d, Addr szLVBHdr0     ; Entry
-    Invoke ListViewInsertColumn, hLV, LVCFMT_LEFT, 100d, Addr szLVBHdr1     ; Entry Offset
-    Invoke ListViewInsertColumn, hLV, LVCFMT_LEFT, 200d, Addr szLVBHdr2     ; Filename
-    Invoke ListViewInsertColumn, hLV, LVCFMT_RIGHT, 100d, Addr szLVBHdr3    ; Filesize
-    Invoke ListViewInsertColumn, hLV, LVCFMT_RIGHT, 100d, Addr szLVBHdr4    ; File location
-    Invoke ListViewInsertColumn, hLV, LVCFMT_RIGHT, 100d, Addr szLVBHdr5    ; Offset Bif Filename
-    Invoke ListViewInsertColumn, hLV, LVCFMT_RIGHT, 100d, Addr szLVBHdr6    ; Length Bif Filename
+    Invoke ListViewInsertColumn, hLV, LVCFMT_LEFT, 130, CTEXT("Superpower")
+    Invoke ListViewInsertColumn, hLV, LVCFMT_LEFT, 130, CTEXT("Student Name")
+    Invoke ListViewInsertColumn, hLV, LVCFMT_LEFT, 60,  CTEXT("Age")
+    Invoke ListViewInsertColumn, hLV, LVCFMT_LEFT, 100d, CTEXT("Sex")
+    Invoke ListViewInsertColumn, hLV, LVCFMT_LEFT, 100d,  CTEXT("Classroom")
+    Invoke ListViewInsertColumn, hLV, LVCFMT_LEFT, 130d, CTEXT("Teacher")
+    Invoke ListViewInsertColumn, hLV, LVCFMT_LEFT, 130d, CTEXT("Progress")
     ;Invoke SendMessage, hLV, LVM_SETCOLUMNWIDTH, 4, LVSCW_AUTOSIZE_USEHEADER
+
+
 
     ret
 TestLVInit ENDP
@@ -230,35 +276,101 @@ TestLVLoadData PROC hLV:DWORD
     
     Invoke ListViewDeleteAll, hLV
 
-    Invoke ListViewInsertItem, hLV, nIndex, Addr szBDItem1, 0
-    Invoke ListViewSetItemParam, hLV, nIndex, 0
-    Invoke ListViewInsertSubItem, hLV, nIndex, 1, Addr szBDOffset1
-    Invoke ListViewInsertSubItem, hLV, nIndex, 2, Addr szBDSize1
-    inc nIndex
-    
-    Invoke ListViewInsertItem, hLV, nIndex, Addr szBDItem2, 0
-    Invoke ListViewSetItemParam, hLV, nIndex, 1
-    Invoke ListViewInsertSubItem, hLV, nIndex, 1, Addr szBDOffset2
-    Invoke ListViewInsertSubItem, hLV, nIndex, 2, Addr szBDSize2
-    inc nIndex
-    
-    Invoke ListViewInsertItem, hLV, nIndex, Addr szBDItem3, 0
-    Invoke ListViewSetItemParam, hLV, nIndex, 2
-    Invoke ListViewInsertSubItem, hLV, nIndex, 1, Addr szBDOffset3
-    Invoke ListViewInsertSubItem, hLV, nIndex, 2, Addr szBDSize3    
-    inc nIndex
+;    Invoke ListViewInsertItem, hLV, nIndex, Addr szBDItem1, 0
+;    Invoke ListViewSetItemParam, hLV, nIndex, 0
+;    Invoke ListViewInsertSubItem, hLV, nIndex, 1, Addr szBDOffset1
+;    Invoke ListViewInsertSubItem, hLV, nIndex, 2, Addr szBDSize1
+;    inc nIndex
+;    
+;    Invoke ListViewInsertItem, hLV, nIndex, Addr szBDItem2, 0
+;    Invoke ListViewSetItemParam, hLV, nIndex, 1
+;    Invoke ListViewInsertSubItem, hLV, nIndex, 1, Addr szBDOffset2
+;    Invoke ListViewInsertSubItem, hLV, nIndex, 2, Addr szBDSize2
+;    inc nIndex
+;    
+;    Invoke ListViewInsertItem, hLV, nIndex, Addr szBDItem3, 0
+;    Invoke ListViewSetItemParam, hLV, nIndex, 2
+;    Invoke ListViewInsertSubItem, hLV, nIndex, 1, Addr szBDOffset3
+;    Invoke ListViewInsertSubItem, hLV, nIndex, 2, Addr szBDSize3    
+;    inc nIndex
+;
+;    Invoke ListViewInsertItem, hLV, nIndex, Addr szBDItem4, 0
+;    Invoke ListViewSetItemParam, hLV, nIndex, 3
+;    Invoke ListViewInsertSubItem, hLV, nIndex, 1, Addr szBDOffset4
+;    Invoke ListViewInsertSubItem, hLV, nIndex, 2, Addr szBDSize4
+;    inc nIndex
+;
+;    Invoke ListViewInsertItem, hLV, nIndex, Addr szBDItem5, 0
+;    Invoke ListViewSetItemParam, hLV, nIndex, 4
+;    Invoke ListViewInsertSubItem, hLV, nIndex, 1, Addr szBDOffset5
+;    Invoke ListViewInsertSubItem, hLV, nIndex, 2, Addr szBDSize5  
+;    inc nIndex
 
-    Invoke ListViewInsertItem, hLV, nIndex, Addr szBDItem4, 0
-    Invoke ListViewSetItemParam, hLV, nIndex, 3
-    Invoke ListViewInsertSubItem, hLV, nIndex, 1, Addr szBDOffset4
-    Invoke ListViewInsertSubItem, hLV, nIndex, 2, Addr szBDSize4
-    inc nIndex
+    ; Load up data in listview, each students details
+    Invoke ListViewInsertItem, hLV, 0, CTEXT("Levitation"), 0
+    Invoke ListViewInsertSubItem, hLV, 0, 1, CTEXT("Bob Smith")
+    Invoke ListViewInsertSubItem, hLV, 0, 2, CTEXT("12")
+    Invoke ListViewInsertSubItem, hLV, 0, 3, CTEXT("M")
+    Invoke ListViewInsertSubItem, hLV, 0, 4, CTEXT("Hut 4")
+    Invoke ListViewInsertSubItem, hLV, 0, 5, CTEXT("Mr. Jones")
+    Invoke ListViewInsertSubItem, hLV, 0, 6, CTEXT("Needs more work")
+    
+    Invoke ListViewInsertItem, hLV, 1, CTEXT("Lightning Hands"), 0
+    Invoke ListViewInsertSubItem, hLV, 1, 1, CTEXT("Sally Jamison")
+    Invoke ListViewInsertSubItem, hLV, 1, 2, CTEXT("11")
+    Invoke ListViewInsertSubItem, hLV, 1, 3, CTEXT("F")
+    Invoke ListViewInsertSubItem, hLV, 1, 4, CTEXT("Room 6")
+    Invoke ListViewInsertSubItem, hLV, 1, 5, CTEXT("Mrs. Abignail")
+    Invoke ListViewInsertSubItem, hLV, 1, 6, CTEXT("Destined to rule the world")
+    
+    Invoke ListViewInsertItem, hLV, 2, CTEXT("Fire-breathing"), 0
+    Invoke ListViewInsertSubItem, hLV, 2, 1, CTEXT("Henry Sellers")
+    Invoke ListViewInsertSubItem, hLV, 2, 2, CTEXT("10")
+    Invoke ListViewInsertSubItem, hLV, 2, 3, CTEXT("M")
+    Invoke ListViewInsertSubItem, hLV, 2, 4, CTEXT("Main Hall")
+    Invoke ListViewInsertSubItem, hLV, 2, 5, CTEXT("Mr. Blue")
+    Invoke ListViewInsertSubItem, hLV, 2, 6, CTEXT("Potion X112 working well")
+    
+    Invoke ListViewInsertItem, hLV, 3, CTEXT("Telepathy"), 0
+    Invoke ListViewInsertSubItem, hLV, 3, 1, CTEXT("Kevin Arnold")
+    Invoke ListViewInsertSubItem, hLV, 3, 2, CTEXT("13")
+    Invoke ListViewInsertSubItem, hLV, 3, 3, CTEXT("M")
+    Invoke ListViewInsertSubItem, hLV, 3, 4, CTEXT("Room 8")
+    Invoke ListViewInsertSubItem, hLV, 3, 5, CTEXT("Mrs. Abignail")
+    Invoke ListViewInsertSubItem, hLV, 3, 6, CTEXT("Progress is fine")
 
-    Invoke ListViewInsertItem, hLV, nIndex, Addr szBDItem5, 0
-    Invoke ListViewSetItemParam, hLV, nIndex, 4
-    Invoke ListViewInsertSubItem, hLV, nIndex, 1, Addr szBDOffset5
-    Invoke ListViewInsertSubItem, hLV, nIndex, 2, Addr szBDSize5  
-    inc nIndex
+    Invoke ListViewInsertItem, hLV, 4, CTEXT("X-RAY Vision"), 0
+    Invoke ListViewInsertSubItem, hLV, 4, 1, CTEXT("Jessica Orange")
+    Invoke ListViewInsertSubItem, hLV, 4, 2, CTEXT("12")
+    Invoke ListViewInsertSubItem, hLV, 4, 3, CTEXT("F")
+    Invoke ListViewInsertSubItem, hLV, 4, 4, CTEXT("Hut 2")
+    Invoke ListViewInsertSubItem, hLV, 4, 5, CTEXT("Mr. Jones")
+    Invoke ListViewInsertSubItem, hLV, 4, 6, CTEXT("Needs more work")    
+
+    Invoke ListViewInsertItem, hLV, 5, CTEXT("Telepathy"), 0
+    Invoke ListViewInsertSubItem, hLV, 5, 1, CTEXT("Little Timmy")
+    Invoke ListViewInsertSubItem, hLV, 5, 2, CTEXT(" 8")
+    Invoke ListViewInsertSubItem, hLV, 5, 3, CTEXT("M")
+    Invoke ListViewInsertSubItem, hLV, 5, 4, CTEXT("Room 6")
+    Invoke ListViewInsertSubItem, hLV, 5, 5, CTEXT("Mrs. Abignail")
+    Invoke ListViewInsertSubItem, hLV, 5, 6, CTEXT("Potion X112 working well") 
+       
+    Invoke ListViewInsertItem, hLV, 6, CTEXT("Empathy"), 0
+    Invoke ListViewInsertSubItem, hLV, 6, 1, CTEXT("Joanna Stapleton")
+    Invoke ListViewInsertSubItem, hLV, 6, 2, CTEXT("11")
+    Invoke ListViewInsertSubItem, hLV, 6, 3, CTEXT("F")
+    Invoke ListViewInsertSubItem, hLV, 6, 4, CTEXT("Art Room")
+    Invoke ListViewInsertSubItem, hLV, 6, 5, CTEXT("Dr. Octavious")
+    Invoke ListViewInsertSubItem, hLV, 6, 6, CTEXT("Needs more work")   
+    
+    Invoke ListViewInsertItem, hLV, 7, CTEXT("Demon Eyes"), 0
+    Invoke ListViewInsertSubItem, hLV, 7, 1, CTEXT("Kurt Englund")
+    Invoke ListViewInsertSubItem, hLV, 7, 2, CTEXT("14")
+    Invoke ListViewInsertSubItem, hLV, 7, 3, CTEXT("M")
+    Invoke ListViewInsertSubItem, hLV, 7, 4, CTEXT("Annex B")
+    Invoke ListViewInsertSubItem, hLV, 7, 5, CTEXT("Dr. Samantha")
+    Invoke ListViewInsertSubItem, hLV, 7, 6, CTEXT("Progress is fine")             
+   
 
     ret
 
@@ -271,8 +383,8 @@ TestLVLoadData ENDP
 TestEditInitProc PROC hLV:DWORD, hControl:DWORD, dwItem:DWORD, dwSubItem:DWORD, lParam:DWORD
     LOCAL szString[MAX_PATH]:BYTE
     
-    PrintDec hLV
-    PrintDec hControl
+    ;PrintDec hLV
+    ;PrintDec hControl
     ;PrintDec dwItem
     ;PrintDec dwSubItem
     ;PrintDec lParam
@@ -324,10 +436,11 @@ TestEditProc PROC hWin:HWND,uMsg:UINT,wParam:WPARAM,lParam:LPARAM,dwItem:DWORD,d
 		mov eax, wParam
 		and eax, 0FFFFh
 		
-		PrintDec eax
-		PrintDec lParam
-		PrintDec wNotifyCode
-    
+		;PrintDec eax
+		;PrintDec lParam
+		;PrintDec wNotifyCode
+        mov eax, TRUE
+        ret
     .else
         mov eax, TRUE
         ret
