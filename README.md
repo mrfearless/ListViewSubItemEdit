@@ -1,5 +1,7 @@
 # ListViewSubItemEdit for Masm
 
+[![Join the chat at https://gitter.im/mrfearless/ListViewSubItemEdit](https://badges.gitter.im/mrfearless/ListViewSubItemEdit.svg)](https://gitter.im/mrfearless/ListViewSubItemEdit?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+
 fearless 2016 - [www.LetTheLight.in](http://www.LetTheLight.in)
 
 ## Overview
