@@ -2,7 +2,7 @@
 
  README & LICENSE
 
- ListViewSubItemEdit v1.0.0.1 by fearless
+ ListViewSubItemEdit v1.0.0.2 by fearless
 
  Copyright (c) 2016 by KSR aka fearless
 
@@ -56,7 +56,19 @@
  HISTORY
  ----------------------------------------------------------------------------------------
 
-
+ v1.0.0.2
+ --------
+ Release    - Tidied up main edit control proc and sub routines for various bits.
+            - Changed validation and save code to call user validation routine (if exist)
+              from Enter, Tab, Shift-Tab, Shift-Up and Shift-Down instead of from
+              WM_KILLFOCUS, this way we still have a chance to keep user in editbox
+              and alert them to an error or something perhaps if entered text is not
+              correct. This is up to the user to decide how to process as per the idea
+              behind calling the user specified validation routine.
+            - Added a notification once text succesfully updated. Calls WM_NOTIFY with
+              LVN_ITEMCHANGED. iItem and iSubItem filled in for appropriate cell and
+              uChanged flag is set to LVIF_TEXT to indicate text has been changed.
+              
  v1.0.0.1 
  --------
  Release    - Updated code to lose focus when listview column resize or scrollbars moved.

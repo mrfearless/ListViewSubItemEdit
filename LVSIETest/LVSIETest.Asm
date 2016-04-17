@@ -21,9 +21,6 @@ ENDIF
 include LVSIETest.inc
 
 
-
-
-
 .code
 
 start:
@@ -103,6 +100,7 @@ WndProc proc hWin:HWND,uMsg:UINT,wParam:WPARAM,lParam:LPARAM
 	.IF eax == WM_INITDIALOG
 		push hWin
 		pop hWnd
+		
 		; Init Stuff Here
 	    Invoke GetDlgItem, hWin, IDC_TESTLV
 	    mov hTESTLV, eax		
@@ -116,46 +114,9 @@ WndProc proc hWin:HWND,uMsg:UINT,wParam:WPARAM,lParam:LPARAM
         mov eax, [ecx].NMHDR.code
         
         .IF ebx == hTESTLV
-
-	        .IF eax == NM_CLICK ; right click popup
-	            
-	            Invoke ListViewGetItemClicked, hTESTLV, lParam, Addr iItem, Addr iSubItem
+	        .IF eax == NM_CLICK
+	            Invoke ListViewGetItemClicked, hTESTLV, lParam, Addr iItem, Addr iSubItem ; fetch what was clicked in listview
 	            .IF eax == TRUE
-	            ;mov ecx, lParam
-	            ;mov eax, (NMITEMACTIVATE ptr [ecx]).iItem
-	            ;mov iItem, eax
-                
-                
-	            ;    mov eax, (NMITEMACTIVATE ptr [ecx]).iSubItem
-	            ;    mov iSubItem, eax
-
-	                
-	                PrintDec iItem
-	                PrintDec iSubItem
-	            
-	        
-;	            ;PrintText 'NM_CLICK'
-;    			invoke GetCursorPos, addr lvhi.pt
-;    			invoke ScreenToClient, hTESTLV, addr lvhi.pt
-;    			invoke SendMessage,hTESTLV,LVM_SUBITEMHITTEST,0, Addr lvhi ; returns the column and item that was clicked in lvhi
-;    			
-;    			;PrintDec lvhi.pt.x
-;    			;PrintDec lvhi.pt.y
-;    			
-;    			Invoke SendMessage, hTESTLV, LVM_GETITEMCOUNT, 0, 0
-;    			.IF (eax > lvhi.iItem)	            ;
-;	                mov eax, lvhi.iItem
-;	                mov iItem, eax
-;	                mov eax, lvhi.iSubItem
-;	                mov iSubItem, eax
-	                
-;	                PrintDec iItem
-;	                PrintDec iSubItem
-	            
-	            ;Invoke ListViewGetSubItemClicked, hTESTLV, Addr iItem, Addr iSubItem
-	            ;.IF eax == TRUE
-
-	                
 	                lea ebx, lvsie
 	                mov eax, iItem
 	                mov [ebx].LVSUBITEMEDIT.iItem, eax
@@ -171,22 +132,21 @@ WndProc proc hWin:HWND,uMsg:UINT,wParam:WPARAM,lParam:LPARAM
 	                mov [ebx].LVSUBITEMEDIT.lpControlInitProc, eax
 	                lea eax, TestEditProc
 	                mov [ebx].LVSUBITEMEDIT.lpControlProc, eax
+	                lea eax, TestEditValidProc
+	                mov [ebx].LVSUBITEMEDIT.lpControlValidProc, eax
 	                mov eax, TRUE
 	                mov [ebx].LVSUBITEMEDIT.dwAllowWraparound, eax
-	                Invoke ListViewSubItemEdit, Addr lvsie
-	                
-	            .ELSE
-	                ;PrintText 'ListViewGetSubItemClicked Failed'
+	                Invoke ListViewSubItemEdit, Addr lvsie ; create our sub item edit control and pass control to it
 	            .ENDIF
 	        
-	        .ELSEIF eax == NM_SETFOCUS
-	            ;PrintText 'NM_SETFOCUS'
-	        
-	        .ELSEIF eax == NM_KILLFOCUS
-	            ;PrintText 'NM_KILLFOCUS'
-	        
+	        .ELSEIF eax == LVN_ITEMCHANGED
+                mov ecx, lParam
+	            mov eax, (NMLISTVIEW ptr [ecx]).uChanged
+	            .IF eax == LVIF_TEXT ; user edited sub item control and value has changed
+	                ;PrintText 'LVIF_TEXT'
+	            .ENDIF
+
 	        .ENDIF
-	        
         .ENDIF
 		
 	.ELSEIF eax == WM_COMMAND
@@ -198,21 +158,16 @@ WndProc proc hWin:HWND,uMsg:UINT,wParam:WPARAM,lParam:LPARAM
 		.ELSEIF eax == IDM_HELP_ABOUT
 			Invoke ShellAbout,hWin,addr AppName,addr AboutMsg,NULL
 		
-		.ELSEIF eax == IDC_TESTBUTTON
-		    lea ebx, nmia
-		    
-		    mov eax, hTESTLV
-		    mov [ebx].NMITEMACTIVATE.hdr.hwndFrom, eax
-		    mov [ebx].NMITEMACTIVATE.hdr.code, NM_CLICK
-		    
-		    mov eax, 2
-		    mov [ebx].NMITEMACTIVATE.iItem, eax
-		    
-		    mov eax, 2
-		    mov [ebx].NMITEMACTIVATE.iSubItem, eax
-		    
-		    Invoke SendMessage, hWin, WM_NOTIFY, hTESTLV, Addr nmia
-		    
+;		.ELSEIF eax == IDC_TESTBUTTON ; test fake NM_CLICK
+;		    lea ebx, nmia
+;		    mov eax, hTESTLV
+;		    mov [ebx].NMITEMACTIVATE.hdr.hwndFrom, eax
+;		    mov [ebx].NMITEMACTIVATE.hdr.code, NM_CLICK
+;		    mov eax, 2
+;		    mov [ebx].NMITEMACTIVATE.iItem, eax
+;		    mov eax, 2
+;		    mov [ebx].NMITEMACTIVATE.iSubItem, eax
+;		    Invoke SendMessage, hWin, WM_NOTIFY, hTESTLV, Addr nmia
 			
 		.ENDIF
     
@@ -244,7 +199,7 @@ WndProc endp
 
 
 ;------------------------------------------------------------------------------
-; TestLVInit
+; TestLVInit - Init listview columns etc
 ;------------------------------------------------------------------------------
 TestLVInit PROC hLV:DWORD
     
@@ -258,53 +213,14 @@ TestLVInit PROC hLV:DWORD
     Invoke ListViewInsertColumn, hLV, LVCFMT_LEFT, 100d,  CTEXT("Classroom")
     Invoke ListViewInsertColumn, hLV, LVCFMT_LEFT, 130d, CTEXT("Teacher")
     Invoke ListViewInsertColumn, hLV, LVCFMT_LEFT, 130d, CTEXT("Progress")
-    ;Invoke SendMessage, hLV, LVM_SETCOLUMNWIDTH, 4, LVSCW_AUTOSIZE_USEHEADER
-
-
-
     ret
 TestLVInit ENDP
 
 
-
 ;------------------------------------------------------------------------------
-; TestLVLoadData
+; TestLVLoadData - Load up data in listview
 ;------------------------------------------------------------------------------
 TestLVLoadData PROC hLV:DWORD
-    LOCAL nIndex:DWORD
-    mov nIndex, 0
-    
-    Invoke ListViewDeleteAll, hLV
-
-;    Invoke ListViewInsertItem, hLV, nIndex, Addr szBDItem1, 0
-;    Invoke ListViewSetItemParam, hLV, nIndex, 0
-;    Invoke ListViewInsertSubItem, hLV, nIndex, 1, Addr szBDOffset1
-;    Invoke ListViewInsertSubItem, hLV, nIndex, 2, Addr szBDSize1
-;    inc nIndex
-;    
-;    Invoke ListViewInsertItem, hLV, nIndex, Addr szBDItem2, 0
-;    Invoke ListViewSetItemParam, hLV, nIndex, 1
-;    Invoke ListViewInsertSubItem, hLV, nIndex, 1, Addr szBDOffset2
-;    Invoke ListViewInsertSubItem, hLV, nIndex, 2, Addr szBDSize2
-;    inc nIndex
-;    
-;    Invoke ListViewInsertItem, hLV, nIndex, Addr szBDItem3, 0
-;    Invoke ListViewSetItemParam, hLV, nIndex, 2
-;    Invoke ListViewInsertSubItem, hLV, nIndex, 1, Addr szBDOffset3
-;    Invoke ListViewInsertSubItem, hLV, nIndex, 2, Addr szBDSize3    
-;    inc nIndex
-;
-;    Invoke ListViewInsertItem, hLV, nIndex, Addr szBDItem4, 0
-;    Invoke ListViewSetItemParam, hLV, nIndex, 3
-;    Invoke ListViewInsertSubItem, hLV, nIndex, 1, Addr szBDOffset4
-;    Invoke ListViewInsertSubItem, hLV, nIndex, 2, Addr szBDSize4
-;    inc nIndex
-;
-;    Invoke ListViewInsertItem, hLV, nIndex, Addr szBDItem5, 0
-;    Invoke ListViewSetItemParam, hLV, nIndex, 4
-;    Invoke ListViewInsertSubItem, hLV, nIndex, 1, Addr szBDOffset5
-;    Invoke ListViewInsertSubItem, hLV, nIndex, 2, Addr szBDSize5  
-;    inc nIndex
 
     ; Load up data in listview, each students details
     Invoke ListViewInsertItem, hLV, 0, CTEXT("Levitation"), 0
@@ -370,7 +286,6 @@ TestLVLoadData PROC hLV:DWORD
     Invoke ListViewInsertSubItem, hLV, 7, 4, CTEXT("Annex B")
     Invoke ListViewInsertSubItem, hLV, 7, 5, CTEXT("Dr. Samantha")
     Invoke ListViewInsertSubItem, hLV, 7, 6, CTEXT("Progress is fine")             
-   
 
     ret
 
@@ -378,7 +293,7 @@ TestLVLoadData ENDP
 
 
 ;------------------------------------------------------------------------------
-; TestEditInitProc
+; TestEditInitProc - Init callback from edit control created by ListViewSubItemEdit
 ;------------------------------------------------------------------------------
 TestEditInitProc PROC hLV:DWORD, hControl:DWORD, dwItem:DWORD, dwSubItem:DWORD, lParam:DWORD
     LOCAL szString[MAX_PATH]:BYTE
@@ -390,7 +305,11 @@ TestEditInitProc PROC hLV:DWORD, hControl:DWORD, dwItem:DWORD, dwSubItem:DWORD, 
     ;PrintDec lParam
     
     ;Invoke GetWindowText, hControl, Addr szString, SIZEOF szString
-    
+    .IF dwSubItem == 2
+        Invoke SendMessage, hControl, EM_SETLIMITTEXT, 2, 0
+    .ELSEIF dwSubItem == 3
+        Invoke SendMessage, hControl, EM_SETLIMITTEXT, 1, 0
+    .ENDIF
     ;Invoke MessageBox, 0, Addr szString, Addr szString, MB_OK
     
     mov eax, TRUE
@@ -399,10 +318,26 @@ TestEditInitProc PROC hLV:DWORD, hControl:DWORD, dwItem:DWORD, dwSubItem:DWORD, 
 TestEditInitProc ENDP
 
 
+;------------------------------------------------------------------------------
+; TestEditProc - Callback from edit control for WM_CHAR, WM_KEYDOWN msgs
+;------------------------------------------------------------------------------
 TestEditProc PROC hWin:HWND,uMsg:UINT,wParam:WPARAM,lParam:LPARAM,dwItem:DWORD,dwSubItem:DWORD
     LOCAL wNotifyCode:DWORD
+    LOCAL szString[MAX_PATH]:BYTE
+    LOCAL hParent:DWORD
     
     .if uMsg==WM_CHAR
+        
+        .IF dwSubItem == 3
+            mov eax,wParam
+            .if al == "m" || al == "f" || al == "M" || al == "F"
+                mov eax, TRUE
+            .ELSE
+                mov eax, FALSE
+            .ENDIF
+            ret
+        .ENDIF
+        
         mov eax,wParam
         .if (al>="0" && al<="9") || al==VK_BACK
             ;.IF dwSubItem == 2 
@@ -429,13 +364,34 @@ TestEditProc PROC hWin:HWND,uMsg:UINT,wParam:WPARAM,lParam:LPARAM,dwItem:DWORD,d
             .endif
         .endif
     
-    .elseif uMsg == WM_COMMAND
-		mov eax, wParam
-		shr eax, 16
-		mov wNotifyCode, eax
-		mov eax, wParam
-		and eax, 0FFFFh
-		
+;    .elseif uMsg == WM_COMMAND
+;		mov eax, wParam
+;		shr eax, 16
+;		mov wNotifyCode, eax
+;		mov eax, wParam
+;		and eax, 0FFFFh
+;		.IF wNotifyCode == EN_CHANGE
+;            PrintText 'wNotifyCode'
+;           .IF dwSubItem == 2
+;                Invoke GetParent, hWin
+;                mov hParent, eax
+;                ;PrintDec hParent
+;                ;PrintDec hWin       
+;                Invoke GetWindowText, hWin, Addr szString, SIZEOF szString
+;                Invoke szLen, Addr szString
+;                ;PrintDec eax
+;                .IF eax == 2
+;                    PrintText '2'
+;                    Invoke GetDlgItemInt, hParent, 1, NULL, FALSE
+;                    .IF eax == 0
+;                        Invoke SetWindowText, hWin, Addr szOne
+;                    .ENDIF
+;                .ENDIF
+;                mov eax, TRUE
+;                ret                
+;            .ENDIF
+		    
+;		.ENDIF
 		;PrintDec eax
 		;PrintDec lParam
 		;PrintDec wNotifyCode
@@ -450,6 +406,31 @@ TestEditProc PROC hWin:HWND,uMsg:UINT,wParam:WPARAM,lParam:LPARAM,dwItem:DWORD,d
 
 TestEditProc ENDP
 
+
+;------------------------------------------------------------------------------
+; TestEditValidProc - Callback from edit control to validate before control
+; closes. Return TRUE to continue processes or FALSE to keep control focus.
+; Possibly alert user if something is wrong if we are going to return FALSE
+; like messagebeep or similar
+;------------------------------------------------------------------------------
+TestEditValidProc PROC hLV:DWORD, hControl:DWORD, dwItem:DWORD, dwSubItem:DWORD, lParam:DWORD
+    LOCAL szString[MAX_PATH]:BYTE
+    
+    .IF dwSubItem == 2 ; age
+        Invoke GetDlgItemInt, hLV, 1, NULL, FALSE ; check age > 0
+        .IF eax == 0
+            ;Invoke SetWindowText, hControl, Addr szOne
+            mov eax, FALSE
+            ret
+        .ELSE
+            mov eax, TRUE
+            ret
+        .ENDIF
+    .ENDIF
+    
+    mov eax, TRUE
+    ret
+TestEditValidProc ENDP
 
 end start
 

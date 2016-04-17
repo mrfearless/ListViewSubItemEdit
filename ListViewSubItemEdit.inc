@@ -4,8 +4,10 @@
 ; Listview Sub Item Edit Prototypes
 ;------------------------------------------------------------------------------------------------------------------------------------------------------------
 ListViewSubItemEdit         PROTO :DWORD                        ; ptrLVSUBITEMEDIT. Pointer to structure containing information needed to create subitem edit control
-ListViewGetSubItemClicked   PROTO :DWORD, :DWORD, :DWORD        ; hListview, lpdwItem, lpSubItem. Returns iItem + iSubItem in the buffers. EAX == TRUE if clicked item/subitem
 ListViewGetItemClicked      PROTO :DWORD, :DWORD, :DWORD, :DWORD; hListview, lParam, lpdwItem, lpSubItem. Returns iItem + iSubItem in the buffers. EAX == TRUE if clicked item/subitem
+ListViewInsertColumn        PROTO :DWORD, :DWORD, :DWORD, :DWORD; hListview, dwFormat, dwWidth, lpszColumnText
+ListViewInsertItem		    PROTO :DWORD, :DWORD, :DWORD, :DWORD; hListview, nItemIndex, lpszItemText, nImageListIndex
+ListViewInsertSubItem	    PROTO :DWORD, :DWORD, :DWORD, :DWORD; hListview, nItemIndex, nSubItemIndex, lpszSubItemText
 
 ;------------------------------------------------------------------------------------------------------------------------------------------------------------
 ; Listview Sub Item Edit Structure
@@ -18,7 +20,7 @@ LVSUBITEMEDIT               STRUCT
     dwControlType           DD ?    ; (Required) see table below for types. Note not all supported yet.
     lpControlInitProc       DD ?    ; (Optional) pointer to custom function for initilization. Return true to continue or false - which exits control and destroys it
     lpControlProc           DD ?    ; (Optional) pointer to custom callback proc for handling WM_CHAR, WM_KEYDOWN and WM_COMMAND. Return true to continue or false to prevent. 
-    lpControlEndProc        DD ?    ; (Optional) pointer to custom function for validation of control before it closes. Return true to continue or false to prevent.
+    lpControlValidProc      DD ?    ; (Optional) pointer to custom function for validation of control before it closes. Return true to continue or false to prevent.
     dwAllowWraparound       DD ?    ; (Optional) true or false to allow next/prev up/dn to wrap to next line/row etc - experimental!
     lParam                  DD ?    ; (Optional) custom value to pass, for use in lpControlInitProc proc
 LVSUBITEMEDIT               ENDS
