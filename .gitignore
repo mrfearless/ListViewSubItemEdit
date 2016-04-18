@@ -1,4 +1,5 @@
 bak/
+*.bat
 *.undo
 *.obj
 *.pdb

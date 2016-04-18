@@ -2,7 +2,7 @@
 
  README & LICENSE
 
- ListViewSubItemEdit v1.0.0.2 by fearless
+ ListViewSubItemEdit v1.0.0.3 by fearless
 
  Copyright (c) 2016 by KSR aka fearless
 
@@ -55,6 +55,21 @@
  ----------------------------------------------------------------------------------------
  HISTORY
  ----------------------------------------------------------------------------------------
+
+ v1.0.0.3
+ --------
+ Release    - FaultTolerantHeap masking crashes. Fixes exceptions occuring as a result of
+              not handling WM_INITIDIALOG correctly
+            - Added WM_SIZE to listview subclass to set focus to listview and destroy 
+              edit control when listview is being resized (from parent resize)
+ Todo       - Change dwWrapAround and other 'features' to a dwStyle flag and combine
+              constants to define what actions are desired by user: allow key navigation
+              (tab + shift-tab and/or shift-up + shift-down or none), fake nm_doubleclick
+              or fake nm_click or both. Read only columns (subitems), key nav to skip
+              to next/prev valid subitem? skip columns of 0 size to next/prev valid
+              subitem? highlight cell instead of row? (allow for f2 to edit, which sends
+              nm_doubleclick instead) plus few other ideas.
+
 
  v1.0.0.2
  --------

@@ -296,7 +296,7 @@ TestLVLoadData ENDP
 ; TestEditInitProc - Init callback from edit control created by ListViewSubItemEdit
 ;------------------------------------------------------------------------------
 TestEditInitProc PROC hLV:DWORD, hControl:DWORD, dwItem:DWORD, dwSubItem:DWORD, lParam:DWORD
-    LOCAL szString[MAX_PATH]:BYTE
+    ;LOCAL szString[MAX_PATH]:BYTE
     
     ;PrintDec hLV
     ;PrintDec hControl

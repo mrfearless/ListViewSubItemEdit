@@ -11,14 +11,14 @@ option casemap:none
 include \masm32\macros\macros.asm
 
 ;DEBUG32 EQU 1
-
-IFDEF DEBUG32
-    PRESERVEXMMREGS equ 1
-    includelib M:\Masm32\lib\Debug32.lib
-    DBG32LIB equ 1
-    DEBUGEXE textequ <'M:\Masm32\DbgWin.exe'>
-    include M:\Masm32\include\debug32.inc
-ENDIF
+;
+;IFDEF DEBUG32
+;    PRESERVEXMMREGS equ 1
+;    includelib M:\Masm32\lib\Debug32.lib
+;    DBG32LIB equ 1
+;    DEBUGEXE textequ <'M:\Masm32\DbgWin.exe'>
+;    include M:\Masm32\include\debug32.inc
+;ENDIF
 
 include windows.inc
 include kernel32.inc
@@ -76,23 +76,6 @@ ListViewEnsureSubItemVisible        PROTO :DWORD, :DWORD
 ENDIF
 
 
-LVSIEDATA               STRUCT
-    iItem               DD ?
-    iSubItem            DD ?
-    hListview           DD ?
-    hHeader             DD ?
-    hParent             DD ?
-    hControl            DD ? ; can be combo etc ?
-    dwControlType       DD ?    
-    lpControlInitProc   DD ? ; any init to be done, or null go ahead anyhow? ret true to continue or false to exit control and destroy it
-    lpControlProc       DD ? ; if user wants to handle themselves? subclass listview as well to pass wm_command and wm_notify back to this proc?
-    lpControlValidProc  DD ? ; validation etc? if null just update subitem anyhow? true to exit or false to continue
-    lParam              DD ? ; custom value to pass to it, for user to use in init or finish proc
-    dwAllowWraparound   DD ?
-    dwControlRect       RECT <?,?,?,?>
-    dwChangesToSave     DD ?
-    szText              DB 256 DUP (?)
-LVSIEDATA               ENDS
 
 IFNDEF MOUSEINPUT
 MOUSEINPUT              STRUCT
@@ -132,6 +115,24 @@ INPUT                   ENDS
 ENDIF
 
 .CONST
+
+LVSIEDATA               STRUCT
+    iItem               DD 0
+    iSubItem            DD 0
+    hListview           DD 0
+    hHeader             DD 0
+    hParent             DD 0
+    hControl            DD 0; can be combo etc ?
+    dwControlType       DD 0    
+    lpControlInitProc   DD 0 ; any init to be done, or null go ahead anyhow? ret true to continue or false to exit control and destroy it
+    lpControlProc       DD 0 ; if user wants to handle themselves? subclass listview as well to pass wm_command and wm_notify back to this proc?
+    lpControlValidProc  DD 0 ; validation etc? if null just update subitem anyhow? true to exit or false to continue
+    lParam              DD 0 ; custom value to pass to it, for user to use in init or finish proc
+    dwAllowWraparound   DD 0
+    dwControlRect       RECT <0,0,0,0>
+    dwChangesToSave     DD 0
+LVSIEDATA               ENDS
+
 ;constants for dwType
 INPUT_MOUSE     equ 0
 INPUT_KEYBOARD  equ 1
@@ -147,9 +148,10 @@ LVSIE_UP                EQU 3
 szLVSIEEditClass        DB 'Edit',0
 lvsienmia               NMITEMACTIVATE <>
 lvsienmlv               NMLISTVIEW <>
+lvsiedata               LVSIEDATA <>
 
 .DATA?
-
+;SubClassData            DD ?
 
 
 .CODE
@@ -169,17 +171,19 @@ ListViewSubItemEdit PROC USES EBX ECX lpLVSIE:DWORD
     LOCAL hinstance:DWORD
     LOCAL SubClassData:DWORD
     LOCAL rect:RECT
-
-    Invoke GlobalAlloc, GMEM_FIXED+GMEM_ZEROINIT, SIZEOF LVSIEDATA
+    
+    mov SubClassData, NULL
+    Invoke GlobalAlloc, GMEM_FIXED or GMEM_ZEROINIT, SIZEOF LVSIEDATA
     .IF eax == NULL
         mov eax, NULL
         ret
     .ENDIF
     mov SubClassData, eax
     mov ecx, eax
-    
+
     ; save passed structure info to our own subclass data
     mov ebx, lpLVSIE
+    mov ecx, SubClassData
     mov eax, [ebx].LVSUBITEMEDIT.iItem
     mov [ecx].LVSIEDATA.iItem, eax
     mov eax, [ebx].LVSUBITEMEDIT.iSubItem
@@ -192,15 +196,19 @@ ListViewSubItemEdit PROC USES EBX ECX lpLVSIE:DWORD
     mov dwControlType, eax
     mov [ecx].LVSIEDATA.dwControlType, eax
     mov eax, [ebx].LVSUBITEMEDIT.lpControlInitProc
+    ;PrintDec eax
     mov [ecx].LVSIEDATA.lpControlInitProc, eax
     mov eax, [ebx].LVSUBITEMEDIT.lpControlProc
     mov [ecx].LVSIEDATA.lpControlProc, eax
     mov eax, [ebx].LVSUBITEMEDIT.lpControlValidProc
+    ;PrintDec eax
     mov [ecx].LVSIEDATA.lpControlValidProc, eax
     mov eax, [ebx].LVSUBITEMEDIT.lParam
     mov [ecx].LVSIEDATA.lParam, eax
     mov eax, [ebx].LVSUBITEMEDIT.dwAllowWraparound
     mov [ecx].LVSIEDATA.dwAllowWraparound, eax
+    
+    ;DbgDump ecx, SIZEOF LVSIEDATA
     
     mov eax, dwControlType
     .IF eax == LVSIC_EDIT
@@ -217,7 +225,9 @@ ListViewSubItemEdit PROC USES EBX ECX lpLVSIE:DWORD
     .ENDIF
 
     .IF eax == NULL
-        Invoke GlobalFree, SubClassData
+        .IF SubClassData != NULL
+            Invoke GlobalFree, SubClassData
+        .ENDIF
         mov eax, NULL
         ret
     .ENDIF
@@ -239,7 +249,7 @@ LVSIE_CreateEditControl PROC USES EBX lpSubClassData
     LOCAL hControl:DWORD
     LOCAL lParam:DWORD
     LOCAL hinstance:DWORD
-    LOCAL lpszItemText:DWORD
+    LOCAL szItemText[MAX_PATH]:BYTE
     LOCAL rect:RECT
     LOCAL dwStyle:DWORD
 
@@ -256,8 +266,6 @@ LVSIE_CreateEditControl PROC USES EBX lpSubClassData
     mov hListview, eax
     mov eax, [ebx].LVSIEDATA.hParent
     mov hParent, eax
-    lea eax, [ebx].LVSIEDATA.szText
-    mov lpszItemText, eax
 
     ; Get area to put our editbox in
  	.IF iSubItem == 0 ; LVM_GETSUBITEMRECT doesnt work with iSubItem == 0 so we calc it another way
@@ -307,13 +315,13 @@ LVSIE_CreateEditControl PROC USES EBX lpSubClassData
     ; If control created succesfully we fill in some info into our subclass data area
     mov hControl, eax
     invoke SetFocus, hControl ; do this before any subclassing, that way if an existing control exists, for whatever reason, setting focus on this, should destroy old one.
-    
+     
     mov ebx, lpSubClassData
     mov eax, hControl
     mov [ebx].LVSIEDATA.hControl, eax
     mov eax, rect.bottom
     mov [ebx].LVSIEDATA.dwControlRect.bottom, eax
-    Invoke ListViewGetItemText, hListview, iItem, iSubItem, lpszItemText, SIZEOF LVSIEDATA.szText
+    Invoke ListViewGetItemText, hListview, iItem, iSubItem, Addr szItemText, MAX_PATH
     
     ; Get listview header, mainly for notification if user resizes a column whilst control is displaying (it will size according to new col size - and closes as focus has been lost)
     Invoke SendMessage, hListview, LVM_GETHEADER, NULL, NULL
@@ -329,7 +337,7 @@ LVSIE_CreateEditControl PROC USES EBX lpSubClassData
     Invoke SetWindowSubclass, hListview, Addr LVSIE_LVEditControlProc, 0, lpSubClassData
 
     ; Final stuff for control before setting focus and calling initdialog for it (we use intidialog to call users lpControlInitProc if specified)
-	Invoke SendMessage, hControl, WM_SETTEXT, 0, lpszItemText
+	Invoke SendMessage, hControl, WM_SETTEXT, 0, Addr szItemText
 	Invoke SendMessage, hControl, EM_SETMARGINS, EC_LEFTMARGIN + EC_RIGHTMARGIN, 00010001h
 	Invoke SendMessage, hControl, EM_SETSEL, 0, -1
 	Invoke SetActiveWindow, hControl
@@ -338,7 +346,6 @@ LVSIE_CreateEditControl PROC USES EBX lpSubClassData
 	    xor eax, eax
 	.ELSE
         mov eax, hControl ; else control is created and handle is passed back for user to use if required
-        ;PrintDec hControl
     .ENDIF
     
     ret
@@ -349,13 +356,15 @@ LVSIE_CreateEditControl ENDP
 ;-------------------------------------------------------------------------------------
 ; Listview requires LVS_EX_FULLROWSELECT for it to pick up each item clicked
 ;-------------------------------------------------------------------------------------
-LVSIE_EditControlProc PROC USES EBX ECX hWin:HWND, uMsg:UINT, wParam:WPARAM, lParam:LPARAM, uIdSubclass:UINT, dwRefData:DWORD
+LVSIE_EditControlProc PROC USES EBX hWin:HWND, uMsg:UINT, wParam:WPARAM, lParam:LPARAM, uIdSubclass:UINT, dwRefData:DWORD
+    LOCAL hHeader:DWORD
+    LOCAL hControl:DWORD
     
     ; if user provided us with a proc for handling stuff themselves we call that first before doing anything
     mov eax, uMsg
     ;.IF eax == WM_DESTROY || eax == WM_NCDESTROY || eax == WM_KILLFOCUS || eax == WM_INITDIALOG || eax == WM_NOTIFY || eax == WM_COMMAND; prevent user from these for safety 
     ;.ELSE
-    .IF eax == WM_CHAR || eax == WM_KEYDOWN || eax == WM_COMMAND
+    .IF eax == WM_CHAR || eax == WM_KEYDOWN ;|| eax == WM_COMMAND
         Invoke LVSIE_EditControlProcProc, dwRefData, uMsg, wParam, lParam
         .IF eax == FALSE ; if user returned false, then they didnt want the normal messages to go through.
             ret
@@ -364,22 +373,26 @@ LVSIE_EditControlProc PROC USES EBX ECX hWin:HWND, uMsg:UINT, wParam:WPARAM, lPa
     
     mov eax, uMsg
     .IF eax == WM_NCDESTROY
+        ;PrintText 'WM_NCDESTROY'
         Invoke RemoveWindowSubclass, hWin, Offset LVSIE_LVEditControlProc, uIdSubclass ; remove our temp subclass of listview (it was just for our WM_NOTIFY and WM_COMMAND events)
-        .IF dwRefData != NULL
-            Invoke GlobalFree, dwRefData ; Free the memory we allocated for our subclass data when we created control, dont need it anymore
-        .ENDIF
         Invoke RemoveWindowSubclass, hWin, Offset LVSIE_EditControlProc, uIdSubclass ; remove editbox subclass before we leave it.
+        mov eax, dwRefData
+        .IF eax != NULL
+            Invoke GlobalFree, eax ; Free the memory we allocated for our subclass data when we created control, dont need it anymore
+        .ENDIF
 
     .ELSEIF eax == WM_INITDIALOG
+        ;PrintText 'WM_INITDIALOG'
         mov ebx, dwRefData
         mov [ebx].LVSIEDATA.dwChangesToSave, FALSE    
         Invoke LVSIE_EditControlInitProc, dwRefData
         .IF eax == FALSE ; if they returned false then we dont go ahead with control and we destroy it and exit
             Invoke SendMessage, hWin, WM_CLOSE, 0, 0
-            ret
         .ENDIF
+        ret
 
     .ELSEIF eax == WM_COMMAND
+        ;PrintText 'WM_COMMAND'
 		mov eax, wParam
 		shr eax, 16
 	    .IF eax == EN_CHANGE ; tell control something changes, so save is needed
@@ -388,329 +401,6 @@ LVSIE_EditControlProc PROC USES EBX ECX hWin:HWND, uMsg:UINT, wParam:WPARAM, lPa
             mov [ebx].LVSIEDATA.dwChangesToSave, eax
 	    .ENDIF
 
-    .ELSEIF eax == WM_GETDLGCODE
-        mov eax, DLGC_WANTALLKEYS ;DLGC_WANTCHARS
-        ret
-    
-    .ELSEIF eax == WM_SETTEXT || eax == WM_PASTE || eax == WM_CUT
-        mov ebx, dwRefData
-        mov eax, TRUE
-        mov [ebx].LVSIEDATA.dwChangesToSave, eax ; tell control we DO have something to save
-    
-    .ELSEIF eax == WM_KILLFOCUS
-        Invoke LVSIE_EditControlValidProc, dwRefData
-  		Invoke DestroyWindow, hWin
-
-    .ELSEIF eax == WM_CHAR
-        mov eax, wParam ; character stored in eax
-        .IF al == VK_BACK ; allow backspace key
-            Invoke DefSubclassProc, hWin, uMsg, wParam, lParam
-            ret
-        .ENDIF
-    
-    .ELSEIF eax == WM_KEYDOWN
-        .IF wParam == VK_ESCAPE
-            mov ebx, dwRefData
-            mov eax, FALSE
-            mov [ebx].LVSIEDATA.dwChangesToSave, eax ; tell control we DONT have something to save
-            Invoke SendMessage, hWin, WM_CLOSE, 0, 0
-            ret
-        
-        .ELSEIF wParam == VK_DOWN || wParam == VK_UP
-            Invoke GetKeyState, VK_SHIFT
-            AND eax, 08000h
-            .IF eax == 08000h
-                Invoke LVSIE_EditControlValidProc, dwRefData
-                .IF eax == TRUE
-                    .IF wParam == VK_DOWN
-                        mov eax, LVSIE_DOWN
-                    .ELSE
-                        mov eax, LVSIE_UP
-                    .ENDIF
-                    Invoke LVSIE_SetNextItem, dwRefData, eax
-                    .IF eax == TRUE
-                        Invoke SendMessage, hWin, WM_CLOSE, 0, 0
-                        ret
-                    .ENDIF
-                .ELSE
-                    ;Invoke MessageBeep, MB_ICONEXCLAMATION
-                .ENDIF
-            .ENDIF
-        
-        .ELSEIF wParam == VK_TAB
-            Invoke LVSIE_EditControlValidProc, dwRefData
-            .IF eax == TRUE
-                Invoke GetKeyState, VK_SHIFT
-                AND eax, 08000h
-                .IF eax == 08000h
-                    mov eax, LVSIE_LEFT
-                .ELSE
-                    mov eax, LVSIE_RIGHT
-                .ENDIF
-                Invoke LVSIE_SetNextItem, dwRefData, eax
-                .IF eax == TRUE
-                    Invoke SendMessage, hWin, WM_CLOSE, 0, 0
-                    ret
-                .ENDIF
-            .ELSE
-                ;Invoke MessageBeep, MB_ICONEXCLAMATION
-            .ENDIF
-        
-        .ELSEIF wParam == VK_RETURN
-            ;mov ebx, dwRefData
-            ;mov eax, [ebx].LVSIEDATA.lpControlValidProc
-            ;PrintDec eax
-        
-            Invoke LVSIE_EditControlValidProc, dwRefData
-            .IF eax == TRUE
-                Invoke SendMessage, hWin, WM_CLOSE, 0, 0
-                ret
-            .ELSE
-                ;Invoke MessageBeep, MB_ICONEXCLAMATION
-            .ENDIF
-        
-        .ELSE
-            Invoke DefSubclassProc, hWin, uMsg, wParam, lParam
-            ret
-        .ENDIF            
-            
-    .ENDIF
-    
-    
-    Invoke DefSubclassProc, hWin, uMsg, wParam, lParam 
-
-    ret
-
-LVSIE_EditControlProc ENDP
-
-
-;-------------------------------------------------------------------------------------
-; Calls custom init procedure of user if specified
-;-------------------------------------------------------------------------------------
-LVSIE_EditControlInitProc PROC USES EBX dwRefData:DWORD
-    LOCAL lpControlInitProc:DWORD
-    LOCAL hListview:DWORD
-    LOCAL hControl:DWORD
-    LOCAL iItem:DWORD
-    LOCAL iSubItem:DWORD
-    
-    IFDEF DEBUG32
-    PrintText 'LVSIE_EditControlInitProc'
-    ENDIF
-    
-    mov ebx, dwRefData
-    mov eax, [ebx].LVSIEDATA.lpControlInitProc
-    .IF eax != NULL
-        mov lpControlInitProc, eax 
-        mov eax, [ebx].LVSIEDATA.iItem
-        mov iItem, eax
-        mov eax, [ebx].LVSIEDATA.iSubItem
-        mov iSubItem, eax
-        mov eax, [ebx].LVSIEDATA.hListview
-        mov hListview, eax
-        mov eax, [ebx].LVSIEDATA.hControl
-        mov hControl, eax
-        mov eax, [ebx].LVSIEDATA.lParam
-        ; call user's lpControlInitProc
-        push eax
-        push iSubItem
-        push iItem
-        push hControl
-        push hListview
-        call lpControlInitProc
-        .IF eax == FALSE ; if user returned false, then they didnt want the normal messages to go through.
-            ret
-        .ENDIF
-    .ENDIF
-    mov eax, TRUE
-    ret
-
-LVSIE_EditControlInitProc ENDP
-
-
-;-------------------------------------------------------------------------------------
-; Calls custom procedure for handling WM_CHAR, WM_KEYDOWN and WM_COMMAND
-;-------------------------------------------------------------------------------------
-LVSIE_EditControlProcProc PROC USES EBX dwRefData:DWORD, uMsg:DWORD, wParam:DWORD, lParam:DWORD
-    LOCAL hControl:DWORD
-    LOCAL iItem:DWORD
-    LOCAL iSubItem:DWORD
-    LOCAL lpControlProc:DWORD
-    
-    IFDEF DEBUG32
-    PrintText 'LVSIE_EditControlProcProc'
-    ENDIF
-
-    mov ebx, dwRefData
-    mov eax, [ebx].LVSIEDATA.lpControlProc
-    .IF eax != NULL
-        mov lpControlProc, eax
-        mov eax, [ebx].LVSIEDATA.hControl
-        mov hControl, eax
-        mov eax, [ebx].LVSIEDATA.iItem
-        mov iItem, eax
-        mov eax, [ebx].LVSIEDATA.iSubItem
-        mov iSubItem, eax
-        push iSubItem
-        push iItem
-        push lParam
-        push wParam
-        push uMsg
-        push hControl
-        call lpControlProc
-        .IF eax == FALSE ; if user returned false, then they didnt want the normal messages to go through.
-            ret
-        .ENDIF
-    .ENDIF
-    mov eax, TRUE
-    ret
-
-LVSIE_EditControlProcProc ENDP
-
-
-;-------------------------------------------------------------------------------------
-; Edit control save changes - calls user validation proc if exists to determine if 
-; it should save the changes. Saves changes made back to listview item/subitem
-; This is called when user presses enter, tab, shift-tab, shift-up or shift-down
-;-------------------------------------------------------------------------------------
-LVSIE_EditControlValidProc PROC USES EBX dwRefData:DWORD
-    LOCAL hListview:DWORD
-    LOCAL hControl:DWORD
-    LOCAL iItem:DWORD
-    LOCAL iSubItem:DWORD
-    LOCAL lParam:DWORD
-    LOCAL lpControlValidProc:DWORD
-    
-    IFDEF DEBUG32
-    PrintText 'LVSIE_EditControlValidProc'
-    ENDIF
-    
-    mov ebx, dwRefData
-    mov eax, [ebx].LVSIEDATA.lpControlValidProc
-    mov lpControlValidProc, eax
-    .IF eax != NULL
-        mov eax, [ebx].LVSIEDATA.iItem
-        mov iItem, eax
-        mov eax, [ebx].LVSIEDATA.iSubItem
-        mov iSubItem, eax
-        mov eax, [ebx].LVSIEDATA.hListview
-        mov hListview, eax
-        mov eax, [ebx].LVSIEDATA.hControl
-        mov hControl, eax
-        mov eax, [ebx].LVSIEDATA.lParam
-        ; call user's lpControlValidProc
-        ;PrintText 'Call lpControlValidProc'
-        push eax
-        push iSubItem
-        push iItem
-        push hControl
-        push hListview
-        call lpControlValidProc
-        .IF eax == FALSE ; if user returned false, then keep focus instead
-            ret
-        .ENDIF
-        mov ebx, dwRefData
-        mov eax, [ebx].LVSIEDATA.dwChangesToSave
-        .IF eax == TRUE        
-            mov ebx, dwRefData
-            lea ebx, [ebx].LVSIEDATA.szText
-            Invoke GetWindowText, hControl, ebx, MAX_PATH
-            Invoke ListViewSetItemText, hListview, iItem, iSubItem, ebx
-            mov ebx, dwRefData
-            mov [ebx].LVSIEDATA.dwChangesToSave, FALSE
-            ;PrintText 'Call LVSIE_EditControlNotifyProc'
-            Invoke LVSIE_EditControlNotifyProc, dwRefData
-        .ENDIF
-    .ELSE
-        ;PrintText 'no lpControlValidProc'
-        mov ebx, dwRefData
-        mov eax, [ebx].LVSIEDATA.dwChangesToSave
-        .IF eax == TRUE ; check if something has changed, and if so we save the text back
-            mov ebx, dwRefData
-            mov eax, [ebx].LVSIEDATA.iItem
-            mov iItem, eax
-            mov eax, [ebx].LVSIEDATA.iSubItem
-            mov iSubItem, eax
-            mov eax, [ebx].LVSIEDATA.hListview
-            mov hListview, eax
-            mov eax, [ebx].LVSIEDATA.hControl
-            mov hControl, eax            
-            lea ebx, [ebx].LVSIEDATA.szText
-            Invoke GetWindowText, hControl, ebx, MAX_PATH
-            Invoke ListViewSetItemText, hListview, iItem, iSubItem, ebx
-            mov ebx, dwRefData
-            mov [ebx].LVSIEDATA.dwChangesToSave, FALSE
-            Invoke LVSIE_EditControlNotifyProc, dwRefData
-        .ENDIF
-    .ENDIF
-    mov eax, TRUE
-    ret
-
-LVSIE_EditControlValidProc ENDP
-
-
-;-------------------------------------------------------------------------------------
-; Sends a WM_NOTIFY with LVN_ITEMCHANGED to the listview to indicate subitem text has
-; changed. iItem and iSubItem are set and the uChanged field is set to LVIF_TEXT 
-;-------------------------------------------------------------------------------------
-LVSIE_EditControlNotifyProc PROC USES EBX dwRefData:DWORD
-    LOCAL hLVParent:DWORD
-    LOCAL hListview:DWORD
-    LOCAL iItem:DWORD
-    LOCAL iSubItem:DWORD
-    LOCAL lParam:DWORD
-    
-    IFDEF DEBUG32
-    PrintText 'LVSIE_EditControlNotifyProc'
-    ENDIF
-    
-    mov ebx, dwRefData
-    mov eax, [ebx].LVSIEDATA.iItem
-    mov iItem, eax
-    mov eax, [ebx].LVSIEDATA.iSubItem
-    mov iSubItem, eax
-    mov eax, [ebx].LVSIEDATA.hListview
-    mov hListview, eax
-    mov eax, [ebx].LVSIEDATA.lParam
-    mov lParam, eax
-
-    Invoke GetParent, hListview
-    mov hLVParent, eax    
-    
-    ; generate our fake NMLISTVIEW to tell original listview we updated text
-    lea ebx, lvsienmlv
-    mov eax, hListview
-    mov [ebx].NMLISTVIEW.hdr.hwndFrom, eax
-    mov [ebx].NMLISTVIEW.hdr.code, LVN_ITEMCHANGED
-    mov eax, iItem
-    mov [ebx].NMLISTVIEW.iItem, eax
-    mov eax, iSubItem
-    mov [ebx].NMLISTVIEW.iSubItem, eax
-    mov [ebx].NMLISTVIEW.uChanged, LVIF_TEXT
-    mov eax, lParam
-    mov [ebx].NMLISTVIEW.lParam, eax
-    
-    Invoke SendMessage, hLVParent, WM_NOTIFY, hListview, Addr lvsienmlv
-    mov eax, TRUE
-    ret
-
-LVSIE_EditControlNotifyProc ENDP
-
-
-;-------------------------------------------------------------------------------------
-; Listview subclass to forward on wm_command events for LVSIE_EditControlProc
-;-------------------------------------------------------------------------------------
-LVSIE_LVEditControlProc PROC USES EBX hWin:HWND, uMsg:UINT, wParam:WPARAM, lParam:LPARAM, uIdSubclass:UINT, dwRefData:DWORD
-    LOCAL hHeader:DWORD
-    LOCAL hControl:DWORD
-    
-    mov eax, uMsg
-    .IF eax == WM_NCDESTROY
-        Invoke RemoveWindowSubclass, hWin, Offset LVSIE_LVEditControlProc, uIdSubclass
-        
-    .ELSEIF eax == WM_COMMAND ;|| eax == WM_NOTIFY ; pass this back to our editbox proc
-        Invoke LVSIE_EditControlProc, hWin, uMsg, wParam, lParam, uIdSubclass, dwRefData
-    
     .ELSEIF eax == WM_NOTIFY
         mov ebx, dwRefData
         mov eax, [ebx].LVSIEDATA.hHeader
@@ -745,9 +435,335 @@ LVSIE_LVEditControlProc PROC USES EBX hWin:HWND, uMsg:UINT, wParam:WPARAM, lPara
                     Invoke SetWindowPos, hControl, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE + SWP_NOZORDER +SWP_HIDEWINDOW + SWP_NOCOPYBITS + SWP_NOSENDCHANGING ;+ SWP_NOREDRAW
                 ;.ENDIF
             .ENDIF
-        .ENDIF       
+        .ENDIF   
+
+    .ELSEIF eax == WM_GETDLGCODE
+        mov eax, DLGC_WANTALLKEYS or DLGC_WANTTAB	 ;DLGC_WANTCHARS
+        ret
+    
+    .ELSEIF eax == WM_SETTEXT || eax == WM_PASTE || eax == WM_CUT
+        mov ebx, dwRefData
+        mov eax, TRUE
+        mov [ebx].LVSIEDATA.dwChangesToSave, eax ; tell control we DO have something to save
+    
+    .ELSEIF eax == WM_KILLFOCUS
+        ;PrintText 'WM_KILLFOCUS'
+        Invoke LVSIE_EditControlValidProc, dwRefData
+  		Invoke DestroyWindow, hWin
+
+    .ELSEIF eax == WM_CHAR
+        mov eax, wParam ; character stored in eax
+        .IF al == VK_BACK ; allow backspace key
+            Invoke DefSubclassProc, hWin, uMsg, wParam, lParam
+            ret
+        .ENDIF
+    
+    .ELSEIF eax == WM_KEYDOWN
+        .IF wParam == VK_ESCAPE
+            mov ebx, dwRefData
+            mov eax, FALSE
+            mov [ebx].LVSIEDATA.dwChangesToSave, eax ; tell control we DONT have something to save
+            Invoke SendMessage, hWin, WM_CLOSE, 0, 0
+            ret
+        
+        .ELSEIF wParam == VK_DOWN || wParam == VK_UP
+            Invoke GetKeyState, VK_SHIFT
+            AND eax, 08000h
+            .IF eax == 08000h
+                Invoke LVSIE_EditControlValidProc, dwRefData
+                .IF eax == TRUE
+                    .IF wParam == VK_DOWN
+                        mov eax, LVSIE_DOWN
+                    .ELSE
+                        mov eax, LVSIE_UP
+                    .ENDIF
+                    Invoke LVSIE_SetNextItem, dwRefData, eax
+                    .IF eax == TRUE
+                        Invoke SendMessage, hWin, WM_CLOSE, 0, 0
+                        ret
+                    .ENDIF
+                ;.ELSE
+                    ;Invoke MessageBeep, MB_ICONEXCLAMATION
+                .ENDIF
+            .ENDIF
+        
+        .ELSEIF wParam == VK_TAB
+            Invoke LVSIE_EditControlValidProc, dwRefData
+            .IF eax == TRUE
+                Invoke GetKeyState, VK_SHIFT
+                AND eax, 08000h
+                .IF eax == 08000h
+                    mov eax, LVSIE_LEFT
+                .ELSE
+                    mov eax, LVSIE_RIGHT
+                .ENDIF
+                Invoke LVSIE_SetNextItem, dwRefData, eax
+                .IF eax == TRUE
+                    Invoke SendMessage, hWin, WM_CLOSE, 0, 0
+                    ret
+                .ENDIF
+            .ENDIF
+        
+        .ELSEIF wParam == VK_RETURN
+            Invoke LVSIE_EditControlValidProc, dwRefData
+            .IF eax == TRUE
+                Invoke SendMessage, hWin, WM_CLOSE, 0, 0
+                ret
+            ;.ELSE
+                ;Invoke MessageBeep, MB_ICONEXCLAMATION
+            .ENDIF
+        
+        .ELSE
+            Invoke DefSubclassProc, hWin, uMsg, wParam, lParam
+            ret
+        .ENDIF            
+            
+    .ENDIF
+    
+    
+    Invoke DefSubclassProc, hWin, uMsg, wParam, lParam 
+
+    ret
+
+LVSIE_EditControlProc ENDP
+
+
+;-------------------------------------------------------------------------------------
+; Calls custom init procedure of user if specified
+;-------------------------------------------------------------------------------------
+LVSIE_EditControlInitProc PROC USES EBX dwRefData:DWORD
+    LOCAL lpControlInitProc:DWORD
+    LOCAL hListview:DWORD
+    LOCAL hControl:DWORD
+    LOCAL iItem:DWORD
+    LOCAL iSubItem:DWORD
+    LOCAL lParam:DWORD
+    
+    IFDEF DEBUG32
+    ;PrintText 'LVSIE_EditControlInitProc'
+    ENDIF
+    mov ebx, dwRefData
+    mov eax, [ebx].LVSIEDATA.lpControlInitProc
+    .IF eax != NULL
+        mov lpControlInitProc, eax
+        ;PrintDec lpControlInitProc
+        mov eax, [ebx].LVSIEDATA.iItem
+        mov iItem, eax
+        ;PrintDec iItem
+        mov eax, [ebx].LVSIEDATA.iSubItem
+        mov iSubItem, eax
+        ;PrintDec iSubItem
+        mov eax, [ebx].LVSIEDATA.hListview
+        mov hListview, eax
+        ;PrintDec hListview
+        mov eax, [ebx].LVSIEDATA.hControl
+        mov hControl, eax
+        ;PrintDec hControl
+        mov eax, [ebx].LVSIEDATA.lParam
+        mov lParam, eax
+        ;PrintDec lParam
+        ; call user's lpControlInitProc
+        push lParam
+        push iSubItem
+        push iItem
+        push hControl
+        push hListview
+        call lpControlInitProc
+        .IF eax == FALSE ; if user returned false, then they didnt want the normal messages to go through.
+            ;PrintText 'lpControlInitProc:FALSE'
+            mov eax, FALSE
+        .ELSE
+            mov eax, TRUE
+        .ENDIF
+    .ELSE
+        mov eax, TRUE
+    .ENDIF
+    
+    ret
+
+LVSIE_EditControlInitProc ENDP
+
+
+;-------------------------------------------------------------------------------------
+; Calls custom procedure for handling WM_CHAR, WM_KEYDOWN and WM_COMMAND
+;-------------------------------------------------------------------------------------
+LVSIE_EditControlProcProc PROC USES EBX dwRefData:DWORD, uMsg:DWORD, wParam:DWORD, lParam:DWORD
+    LOCAL hControl:DWORD
+    LOCAL iItem:DWORD
+    LOCAL iSubItem:DWORD
+    LOCAL lpControlProc:DWORD
+    
+    IFDEF DEBUG32
+    ;PrintText 'LVSIE_EditControlProcProc'
+    ENDIF
+
+    mov ebx, dwRefData
+    mov eax, [ebx].LVSIEDATA.lpControlProc
+    .IF eax != NULL
+        mov lpControlProc, eax
+        ;PrintDec lpControlProc
+        mov eax, [ebx].LVSIEDATA.hControl
+        mov hControl, eax
+        mov eax, [ebx].LVSIEDATA.iItem
+        mov iItem, eax
+        mov eax, [ebx].LVSIEDATA.iSubItem
+        mov iSubItem, eax
+        push iSubItem
+        push iItem
+        push lParam
+        push wParam
+        push uMsg
+        push hControl
+        call lpControlProc
+        .IF eax == FALSE ; if user returned false, then they didnt want the normal messages to go through.
+            mov eax, FALSE
+        .ELSE
+            mov eax, TRUE
+        .ENDIF
+    .ELSE
+        mov eax, TRUE
+    .ENDIF
+    
+    ret
+
+LVSIE_EditControlProcProc ENDP
+
+
+;-------------------------------------------------------------------------------------
+; Edit control save changes - calls user validation proc if exists to determine if 
+; it should save the changes. Saves changes made back to listview item/subitem
+; This is called when user presses enter, tab, shift-tab, shift-up or shift-down
+;-------------------------------------------------------------------------------------
+LVSIE_EditControlValidProc PROC USES EBX dwRefData:DWORD
+    LOCAL hListview:DWORD
+    LOCAL hControl:DWORD
+    LOCAL iItem:DWORD
+    LOCAL iSubItem:DWORD
+    LOCAL lParam:DWORD
+    LOCAL lpControlValidProc:DWORD
+    LOCAL szItemText[MAX_PATH]:BYTE
+    
+    IFDEF DEBUG32
+    ;PrintText 'LVSIE_EditControlValidProc'
+    ENDIF
+    
+    ;PrintDec dwRefData
+    
+    mov ebx, dwRefData
+    mov eax, [ebx].LVSIEDATA.dwChangesToSave
+    .IF eax == TRUE ; changes to save?
+        mov ebx, dwRefData
+        mov eax, [ebx].LVSIEDATA.hListview
+        mov hListview, eax
+        mov eax, [ebx].LVSIEDATA.hControl
+        mov hControl, eax
+        mov eax, [ebx].LVSIEDATA.iItem
+        mov iItem, eax
+        mov eax, [ebx].LVSIEDATA.iSubItem
+        mov iSubItem, eax        
+        mov eax, [ebx].LVSIEDATA.lpControlValidProc
+        mov lpControlValidProc, eax
+        ;PrintDec eax
+        .IF eax != NULL ; does user have a custom validation proc to call?
+            mov ebx, dwRefData
+            mov eax, [ebx].LVSIEDATA.lParam
+            ; call user's lpControlValidProc
+            ;PrintText 'Call lpControlValidProc'
+            push eax
+            push iSubItem
+            push iItem
+            push hControl
+            push hListview
+            call lpControlValidProc
+            .IF eax == FALSE ; if user returned false, then keep focus instead
+                ret
+            .ENDIF
+        .ENDIF
+        
+        ; else save changes
+        
+        Invoke GetWindowText, hControl, Addr szItemText, MAX_PATH
+        Invoke ListViewSetItemText, hListview, iItem, iSubItem, Addr szItemText
+        mov ebx, dwRefData
+        mov [ebx].LVSIEDATA.dwChangesToSave, FALSE
+        ;PrintText 'Call LVSIE_EditControlNotifyProc'
+        Invoke LVSIE_EditControlNotifyProc, dwRefData
+
+    .ELSE
+        ;PrintText 'No changes to save'
+    .ENDIF
+    mov eax, TRUE
+    ret
+
+LVSIE_EditControlValidProc ENDP
+
+
+;-------------------------------------------------------------------------------------
+; Sends a WM_NOTIFY with LVN_ITEMCHANGED to the listview to indicate subitem text has
+; changed. iItem and iSubItem are set and the uChanged field is set to LVIF_TEXT 
+;-------------------------------------------------------------------------------------
+LVSIE_EditControlNotifyProc PROC USES EBX dwRefData:DWORD
+    LOCAL hLVParent:DWORD
+    LOCAL hListview:DWORD
+    LOCAL iItem:DWORD
+    LOCAL iSubItem:DWORD
+    LOCAL lParam:DWORD
+    
+    IFDEF DEBUG32
+    ;PrintText 'LVSIE_EditControlNotifyProc'
+    ENDIF
+    
+    mov ebx, dwRefData
+    mov eax, [ebx].LVSIEDATA.iItem
+    mov iItem, eax
+    mov eax, [ebx].LVSIEDATA.iSubItem
+    mov iSubItem, eax
+    mov eax, [ebx].LVSIEDATA.hListview
+    mov hListview, eax
+    mov eax, [ebx].LVSIEDATA.lParam
+    mov lParam, eax
+
+    Invoke GetParent, hListview
+    mov hLVParent, eax    
+    
+    ; generate our fake NMLISTVIEW to tell original listview we updated text
+    lea ebx, lvsienmlv
+    mov eax, hListview
+    mov [ebx].NMLISTVIEW.hdr.hwndFrom, eax
+    mov [ebx].NMLISTVIEW.hdr.code, LVN_ITEMCHANGED
+    mov eax, iItem
+    mov [ebx].NMLISTVIEW.iItem, eax
+    mov eax, iSubItem
+    mov [ebx].NMLISTVIEW.iSubItem, eax
+    mov [ebx].NMLISTVIEW.uChanged, LVIF_TEXT
+    mov eax, lParam
+    mov [ebx].NMLISTVIEW.lParam, eax
+    
+    Invoke PostMessage, hLVParent, WM_NOTIFY, hListview, Addr lvsienmlv
+    mov eax, TRUE
+    ret
+
+LVSIE_EditControlNotifyProc ENDP
+
+
+;-------------------------------------------------------------------------------------
+; Listview subclass to forward on wm_command events for LVSIE_EditControlProc
+;-------------------------------------------------------------------------------------
+LVSIE_LVEditControlProc PROC USES EBX hWin:HWND, uMsg:UINT, wParam:WPARAM, lParam:LPARAM, uIdSubclass:UINT, dwRefData:DWORD
+
+    mov eax, uMsg
+    ;.IF eax == WM_NCDESTROY
+        ;Invoke RemoveWindowSubclass, hWin, Offset LVSIE_LVEditControlProc, uIdSubclass
+        
+    .IF eax == WM_COMMAND || eax == WM_NOTIFY ; pass this back to our editbox proc
+        Invoke LVSIE_EditControlProc, hWin, uMsg, wParam, lParam, uIdSubclass, dwRefData
     
     .ELSEIF eax == WM_HSCROLL || eax == WM_VSCROLL ; set focus to listview to destroy our control otherwise weird stuff happends (similar to listview col resizing)
+        mov ebx, dwRefData
+        mov eax, [ebx].LVSIEDATA.hListview
+        Invoke SetFocus, eax
+    
+    .ELSEIF eax == WM_SIZE  ; set focus to listview to destroy our control whilst listview is being resized (from main parent resizing for example)
         mov ebx, dwRefData
         mov eax, [ebx].LVSIEDATA.hListview
         Invoke SetFocus, eax
@@ -776,7 +792,7 @@ LVSIE_SetNextItem PROC USES EBX dwRefData:DWORD, dwDirection:DWORD
     LOCAL dwAllowWraparound:DWORD
     
     IFDEF DEBUG32
-    PrintText 'LVSIE_SetNextItem'
+    ;PrintText 'LVSIE_SetNextItem'
     ENDIF
     
     mov ebx, dwRefData
@@ -790,15 +806,15 @@ LVSIE_SetNextItem PROC USES EBX dwRefData:DWORD, dwDirection:DWORD
     mov dwAllowWraparound, eax
 
     IFDEF DEBUG32
-    PrintLine
+    ;PrintLine
     .IF dwDirection == 0
-        PrintText 'Right'
+        ;PrintText 'Right'
     .ELSEIF dwDirection == 1
-        PrintText 'Left'
+        ;PrintText 'Left'
     .ELSEIF dwDirection == 2
-        PrintText 'Down'
+        ;PrintText 'Down'
     .ELSEIF dwDirection == 3
-        PrintText 'Up'
+        ;PrintText 'Up'
     .ENDIF
     ENDIF
     
@@ -917,8 +933,8 @@ LVSIE_SetNextItem PROC USES EBX dwRefData:DWORD, dwDirection:DWORD
     .ENDIF
 
     IFDEF DEBUG32
-    PrintDec nNextItem
-    PrintDec nNextSubItem
+    ;PrintDec nNextItem
+    ;PrintDec nNextSubItem
     ENDIF
     
     Invoke SendMessage, hListview, LVM_ENSUREVISIBLE, nNextItem, TRUE
@@ -934,7 +950,7 @@ LVSIE_SetNextItem PROC USES EBX dwRefData:DWORD, dwDirection:DWORD
     mov eax, nNextSubItem
     mov [ebx].NMITEMACTIVATE.iSubItem, eax
     
-    Invoke SendMessage, hLVParent, WM_NOTIFY, hListview, Addr lvsienmia
+    Invoke PostMessage, hLVParent, WM_NOTIFY, hListview, Addr lvsienmia
     mov eax, TRUE
     ret
 
