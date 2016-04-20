@@ -128,7 +128,8 @@ LVSIEDATA               STRUCT
     lpControlProc       DD 0 ; if user wants to handle themselves? subclass listview as well to pass wm_command and wm_notify back to this proc?
     lpControlValidProc  DD 0 ; validation etc? if null just update subitem anyhow? true to exit or false to continue
     lParam              DD 0 ; custom value to pass to it, for user to use in init or finish proc
-    dwAllowWraparound   DD 0
+    ;dwAllowWraparound   DD 0
+    dwOptions           DD 0
     dwControlRect       RECT <0,0,0,0>
     dwChangesToSave     DD 0
 LVSIEDATA               ENDS
@@ -142,6 +143,7 @@ LVSIE_RIGHT             EQU 0
 LVSIE_LEFT              EQU 1
 LVSIE_DOWN              EQU 2
 LVSIE_UP                EQU 3
+
 
 
 .DATA
@@ -160,10 +162,7 @@ lvsiedata               LVSIEDATA <>
 ;-------------------------------------------------------------------------------------
 ; Handles setup of listview subitem editing
 ;-------------------------------------------------------------------------------------
-ListViewSubItemEdit PROC USES EBX ECX lpLVSIE:DWORD
-    LOCAL iItem:DWORD
-    LOCAL iSubItem:DWORD
-    LOCAL hListview:DWORD
+ListViewSubItemEdit PROC USES EBX ECX hListview:DWORD, dwItem:DWORD, dwSubItem:DWORD, lpLVSUBITEMEDIT:DWORD
     LOCAL hParent:DWORD
     LOCAL hControl:DWORD
     LOCAL dwControlType:DWORD
@@ -171,6 +170,9 @@ ListViewSubItemEdit PROC USES EBX ECX lpLVSIE:DWORD
     LOCAL hinstance:DWORD
     LOCAL SubClassData:DWORD
     LOCAL rect:RECT
+    
+    Invoke GetParent, hListview
+    mov hParent, eax
     
     mov SubClassData, NULL
     Invoke GlobalAlloc, GMEM_FIXED or GMEM_ZEROINIT, SIZEOF LVSIEDATA
@@ -182,15 +184,19 @@ ListViewSubItemEdit PROC USES EBX ECX lpLVSIE:DWORD
     mov ecx, eax
 
     ; save passed structure info to our own subclass data
-    mov ebx, lpLVSIE
+    mov ebx, lpLVSUBITEMEDIT
     mov ecx, SubClassData
-    mov eax, [ebx].LVSUBITEMEDIT.iItem
+    ;mov eax, [ebx].LVSUBITEMEDIT.iItem
+    mov eax, dwItem
     mov [ecx].LVSIEDATA.iItem, eax
-    mov eax, [ebx].LVSUBITEMEDIT.iSubItem
+    ;mov eax, [ebx].LVSUBITEMEDIT.iSubItem
+    mov eax, dwSubItem
     mov [ecx].LVSIEDATA.iSubItem, eax
-    mov eax, [ebx].LVSUBITEMEDIT.hListview
+    ;mov eax, [ebx].LVSUBITEMEDIT.hListview
+    mov eax, hListview
     mov [ecx].LVSIEDATA.hListview, eax
-    mov eax, [ebx].LVSUBITEMEDIT.hParent
+    ;mov eax, [ebx].LVSUBITEMEDIT.hParent
+    mov eax, hParent
     mov [ecx].LVSIEDATA.hParent, eax
     mov eax, [ebx].LVSUBITEMEDIT.dwControlType
     mov dwControlType, eax
@@ -205,8 +211,13 @@ ListViewSubItemEdit PROC USES EBX ECX lpLVSIE:DWORD
     mov [ecx].LVSIEDATA.lpControlValidProc, eax
     mov eax, [ebx].LVSUBITEMEDIT.lParam
     mov [ecx].LVSIEDATA.lParam, eax
-    mov eax, [ebx].LVSUBITEMEDIT.dwAllowWraparound
-    mov [ecx].LVSIEDATA.dwAllowWraparound, eax
+    ;mov eax, [ebx].LVSUBITEMEDIT.dwAllowWraparound
+    ;mov [ecx].LVSIEDATA.dwAllowWraparound, eax
+    mov eax, [ebx].LVSUBITEMEDIT.dwOptions
+    .IF eax == 0
+        mov eax, LVSIO_NAV_ALL or LVSIO_WRAP_ALL or LVSIO_NOTIFY_NMCLICK
+    .ENDIF
+    mov [ecx].LVSIEDATA.dwOptions, eax
     
     ;DbgDump ecx, SIZEOF LVSIEDATA
     
@@ -359,15 +370,23 @@ LVSIE_CreateEditControl ENDP
 LVSIE_EditControlProc PROC USES EBX hWin:HWND, uMsg:UINT, wParam:WPARAM, lParam:LPARAM, uIdSubclass:UINT, dwRefData:DWORD
     LOCAL hHeader:DWORD
     LOCAL hControl:DWORD
+    LOCAL wParamX:DWORD
     
+    mov eax, wParam
+    mov wParamX, eax
     ; if user provided us with a proc for handling stuff themselves we call that first before doing anything
     mov eax, uMsg
     ;.IF eax == WM_DESTROY || eax == WM_NCDESTROY || eax == WM_KILLFOCUS || eax == WM_INITDIALOG || eax == WM_NOTIFY || eax == WM_COMMAND; prevent user from these for safety 
     ;.ELSE
-    .IF eax == WM_CHAR || eax == WM_KEYDOWN ;|| eax == WM_COMMAND
+    .IF eax == WM_CHAR || eax == WM_KEYDOWN || eax == WM_PASTE;|| eax == WM_COMMAND
+
         Invoke LVSIE_EditControlProcProc, dwRefData, uMsg, wParam, lParam
-        .IF eax == FALSE ; if user returned false, then they didnt want the normal messages to go through.
+        .IF eax == 0;FALSE ; if user returned false, then they didnt want the normal messages to go through.
             ret
+        .ENDIF
+        .IF eax > 1
+            mov wParamX, eax
+            ;PrintDec wParamX
         .ENDIF
     .ENDIF
     
@@ -452,21 +471,21 @@ LVSIE_EditControlProc PROC USES EBX hWin:HWND, uMsg:UINT, wParam:WPARAM, lParam:
   		Invoke DestroyWindow, hWin
 
     .ELSEIF eax == WM_CHAR
-        mov eax, wParam ; character stored in eax
+        mov eax, wParamX ; character stored in eax
         .IF al == VK_BACK ; allow backspace key
-            Invoke DefSubclassProc, hWin, uMsg, wParam, lParam
+            Invoke DefSubclassProc, hWin, uMsg, wParamX, lParam
             ret
         .ENDIF
     
     .ELSEIF eax == WM_KEYDOWN
-        .IF wParam == VK_ESCAPE
+        .IF wParamX == VK_ESCAPE
             mov ebx, dwRefData
             mov eax, FALSE
             mov [ebx].LVSIEDATA.dwChangesToSave, eax ; tell control we DONT have something to save
             Invoke SendMessage, hWin, WM_CLOSE, 0, 0
             ret
         
-        .ELSEIF wParam == VK_DOWN || wParam == VK_UP
+        .ELSEIF wParamX == VK_DOWN || wParamX == VK_UP
             Invoke GetKeyState, VK_SHIFT
             AND eax, 08000h
             .IF eax == 08000h
@@ -481,13 +500,16 @@ LVSIE_EditControlProc PROC USES EBX hWin:HWND, uMsg:UINT, wParam:WPARAM, lParam:
                     .IF eax == TRUE
                         Invoke SendMessage, hWin, WM_CLOSE, 0, 0
                         ret
+                    .ELSE
+                        mov eax, 0
+                        ret
                     .ENDIF
                 ;.ELSE
                     ;Invoke MessageBeep, MB_ICONEXCLAMATION
                 .ENDIF
             .ENDIF
         
-        .ELSEIF wParam == VK_TAB
+        .ELSEIF wParamX == VK_TAB
             Invoke LVSIE_EditControlValidProc, dwRefData
             .IF eax == TRUE
                 Invoke GetKeyState, VK_SHIFT
@@ -501,10 +523,13 @@ LVSIE_EditControlProc PROC USES EBX hWin:HWND, uMsg:UINT, wParam:WPARAM, lParam:
                 .IF eax == TRUE
                     Invoke SendMessage, hWin, WM_CLOSE, 0, 0
                     ret
+                .ELSE
+                    mov eax, 0
+                    ret
                 .ENDIF
             .ENDIF
         
-        .ELSEIF wParam == VK_RETURN
+        .ELSEIF wParamX == VK_RETURN
             Invoke LVSIE_EditControlValidProc, dwRefData
             .IF eax == TRUE
                 Invoke SendMessage, hWin, WM_CLOSE, 0, 0
@@ -514,14 +539,14 @@ LVSIE_EditControlProc PROC USES EBX hWin:HWND, uMsg:UINT, wParam:WPARAM, lParam:
             .ENDIF
         
         .ELSE
-            Invoke DefSubclassProc, hWin, uMsg, wParam, lParam
+            Invoke DefSubclassProc, hWin, uMsg, wParamX, lParam
             ret
         .ENDIF            
             
     .ENDIF
     
     
-    Invoke DefSubclassProc, hWin, uMsg, wParam, lParam 
+    Invoke DefSubclassProc, hWin, uMsg, wParamX, lParam 
 
     ret
 
@@ -615,11 +640,11 @@ LVSIE_EditControlProcProc PROC USES EBX dwRefData:DWORD, uMsg:DWORD, wParam:DWOR
         push uMsg
         push hControl
         call lpControlProc
-        .IF eax == FALSE ; if user returned false, then they didnt want the normal messages to go through.
-            mov eax, FALSE
-        .ELSE
-            mov eax, TRUE
-        .ENDIF
+        ;.IF eax == FALSE ; if user returned false, then they didnt want the normal messages to go through.
+        ;    mov eax, FALSE
+        ;.ELSE
+        ;    mov eax, TRUE
+        ;.ENDIF
     .ELSE
         mov eax, TRUE
     .ENDIF
@@ -789,11 +814,64 @@ LVSIE_SetNextItem PROC USES EBX dwRefData:DWORD, dwDirection:DWORD
     LOCAL hListview:DWORD
     LOCAL iItem:DWORD
     LOCAL iSubItem:DWORD
-    LOCAL dwAllowWraparound:DWORD
+    ;LOCAL dwAllowWraparound:DWORD
+    LOCAL dwWrapHorz:DWORD
+    LOCAL dwWrapVert:DWORD
+    LOCAL dwOptions:DWORD
+    LOCAL dwNotifyCode:DWORD
     
     IFDEF DEBUG32
     ;PrintText 'LVSIE_SetNextItem'
     ENDIF
+    
+    ; check if options allows certain navigations, if not we exit back with false to prevent it.
+    mov ebx, dwRefData
+    mov eax,[ebx].LVSIEDATA.dwOptions
+    mov dwOptions, eax
+    mov eax, dwDirection
+    mov ebx, dwOptions
+    and ebx, LVSIO_NAV_NONE
+    .IF ebx == LVSIO_NAV_NONE
+        mov eax, FALSE
+        ret
+    .ENDIF
+    mov ebx, dwOptions
+    .IF eax == LVSIE_RIGHT || eax == LVSIE_LEFT
+        and ebx, LVSIO_NAV_TABS
+        .IF ebx != LVSIO_NAV_TABS
+            mov eax, FALSE
+            ret
+        .ENDIF
+    .ELSEIF eax == LVSIE_DOWN || eax == LVSIE_UP
+        and ebx, LVSIO_NAV_ARROWS
+        .IF ebx != LVSIO_NAV_ARROWS
+            mov eax, FALSE
+            ret
+        .ENDIF
+    .ENDIF
+    
+    ; Get wrap options
+    mov ebx, dwOptions
+    and ebx, LVSIO_WRAP_NONE
+    .IF ebx == LVSIO_WRAP_NONE
+        mov dwWrapHorz, FALSE
+        mov dwWrapVert, FALSE
+    .ELSE
+        mov ebx, dwOptions
+        and ebx, LVSIO_WRAP_HORZ
+        .IF ebx == LVSIO_WRAP_HORZ
+            mov dwWrapHorz, TRUE
+        .ELSE
+            mov dwWrapHorz, FALSE
+        .ENDIF
+        mov ebx, dwOptions
+        and ebx, LVSIO_WRAP_VERT
+        .IF ebx == LVSIO_WRAP_VERT
+            mov dwWrapVert, TRUE
+        .ELSE
+            mov dwWrapVert, FALSE
+        .ENDIF
+    .ENDIF
     
     mov ebx, dwRefData
     mov eax, [ebx].LVSIEDATA.iItem
@@ -802,8 +880,8 @@ LVSIE_SetNextItem PROC USES EBX dwRefData:DWORD, dwDirection:DWORD
     mov iSubItem, eax
     mov eax, [ebx].LVSIEDATA.hListview
     mov hListview, eax
-    mov eax, [ebx].LVSIEDATA.dwAllowWraparound
-    mov dwAllowWraparound, eax
+    ;mov eax, [ebx].LVSIEDATA.dwAllowWraparound
+    ;mov dwAllowWraparound, eax
 
     IFDEF DEBUG32
     ;PrintLine
@@ -827,7 +905,7 @@ LVSIE_SetNextItem PROC USES EBX dwRefData:DWORD, dwDirection:DWORD
     mov nTotalRows, eax
     
     mov eax, dwDirection
-    .IF eax == 0 ; right - default - tab
+    .IF eax == LVSIE_RIGHT ; right - default - tab
     
         mov eax, nTotalCols
         dec eax ; for 0 based cols
@@ -838,7 +916,7 @@ LVSIE_SetNextItem PROC USES EBX dwRefData:DWORD, dwDirection:DWORD
             mov eax, iItem
             mov nNextItem, eax
         .ELSE
-            .IF dwAllowWraparound == TRUE ; wrap to next line down, 0 subitem
+            .IF dwWrapHorz == TRUE ;dwAllowWraparound == TRUE ; wrap to next line down, 0 subitem
                 mov nNextSubItem, 0
                 mov eax, nTotalRows
                 dec eax ; for 0 based rows
@@ -847,16 +925,21 @@ LVSIE_SetNextItem PROC USES EBX dwRefData:DWORD, dwDirection:DWORD
                 .IF ebx <= eax
                     mov nNextItem, ebx
                 .ELSE
-                    mov nNextItem, 0 ; at last cell so go back to 0,0
+                    .IF dwWrapVert == TRUE
+                        mov nNextItem, 0 ; at last cell so go back to 0,0
+                    .ELSE
+                        mov eax, FALSE
+                        ret
+                    .ENDIF
                 .ENDIF
             .ELSE
-                Invoke GetNextDlgTabItem, hLVParent, hListview, FALSE
+                ;Invoke GetNextDlgTabItem, hLVParent, hListview, FALSE
                 mov eax, FALSE
                 ret
             .ENDIF
         .ENDIF
     
-    .ELSEIF eax == 1 ; left (back) - shift+tab
+    .ELSEIF eax == LVSIE_LEFT ; left (back) - shift+tab
         
         mov eax, nTotalCols
         dec eax ; for 0 based cols
@@ -867,7 +950,7 @@ LVSIE_SetNextItem PROC USES EBX dwRefData:DWORD, dwDirection:DWORD
             mov eax, iItem
             mov nNextItem, eax            
         .ELSE
-            .IF dwAllowWraparound == TRUE ; wrap to next line up, total cols-1 subitem
+            .IF dwWrapHorz == TRUE ;dwAllowWraparound == TRUE ; wrap to next line up, total cols-1 subitem
                 mov eax, nTotalCols
                 dec eax ; for 0 based col count
                 mov nNextSubItem, eax
@@ -879,18 +962,23 @@ LVSIE_SetNextItem PROC USES EBX dwRefData:DWORD, dwDirection:DWORD
                 .IF sdword ptr ebx >= 0
                     mov nNextItem, ebx
                 .ELSE
-                    mov eax, nTotalRows
-                    dec eax ; for 0 based row count
-                    mov nNextItem, eax ; at first cell 0,0 so go back to totalrows-1, totalcols-1
+                    .IF dwWrapVert == TRUE
+                        mov eax, nTotalRows
+                        dec eax ; for 0 based row count
+                        mov nNextItem, eax ; at first cell 0,0 so go back to totalrows-1, totalcols-1
+                    .ELSE
+                        mov eax, FALSE
+                        ret
+                    .ENDIF
                 .ENDIF
             .ELSE
-                Invoke GetNextDlgTabItem, hLVParent, hListview, TRUE
+                ;Invoke GetNextDlgTabItem, hLVParent, hListview, TRUE
                 mov eax, FALSE
                 ret
             .ENDIF
         .ENDIF
     
-    .ELSEIF eax == 2 ; down
+    .ELSEIF eax == LVSIE_DOWN ; down
         mov eax, iSubItem
         mov nNextSubItem, eax
         
@@ -901,7 +989,7 @@ LVSIE_SetNextItem PROC USES EBX dwRefData:DWORD, dwDirection:DWORD
         .IF ebx <= eax
             mov nNextItem, ebx
         .ELSE
-            .IF dwAllowWraparound == TRUE ; wrap to first line
+            .IF dwWrapVert == TRUE ;dwAllowWraparound == TRUE ; wrap to first line
                 mov nNextItem, 0
              .ELSE
                 mov eax, FALSE
@@ -909,7 +997,7 @@ LVSIE_SetNextItem PROC USES EBX dwRefData:DWORD, dwDirection:DWORD
             .ENDIF
         .ENDIF
     
-    .ELSEIF eax == 3 ; up
+    .ELSEIF eax == LVSIE_UP ; up
         mov eax, iSubItem
         mov nNextSubItem, eax
 
@@ -920,7 +1008,7 @@ LVSIE_SetNextItem PROC USES EBX dwRefData:DWORD, dwDirection:DWORD
         .IF sdword ptr ebx >= 0
             mov nNextItem, ebx
         .ELSE
-            .IF dwAllowWraparound == TRUE ; wrap to last line
+            .IF dwWrapVert == TRUE ;dwAllowWraparound == TRUE ; wrap to last line
                 mov eax, nTotalRows
                 dec eax ; for 0 based row count
                 mov nNextItem, eax
@@ -936,6 +1024,37 @@ LVSIE_SetNextItem PROC USES EBX dwRefData:DWORD, dwDirection:DWORD
     ;PrintDec nNextItem
     ;PrintDec nNextSubItem
     ENDIF
+
+    mov ebx, dwOptions
+    and ebx, LVSIO_NOTIFY_NMCLICK or LVSIO_NOTIFY_NMDBLCLK or LVSIO_NOTIFY_NMRCLICK or LVSIO_NOTIFY_NMRDBLCLK
+    .IF ebx == 0
+        mov dwNotifyCode, NM_CLICK
+    .ELSE
+        mov ebx, dwOptions
+        and ebx, LVSIO_NOTIFY_NMCLICK
+        .IF ebx == LVSIO_NOTIFY_NMCLICK
+            mov dwNotifyCode, NM_CLICK
+        .ELSE
+            mov ebx, dwOptions
+            and ebx, LVSIO_NOTIFY_NMDBLCLK
+            .IF ebx == LVSIO_NOTIFY_NMDBLCLK
+                mov dwNotifyCode, NM_DBLCLK
+            .ELSE
+                mov ebx, dwOptions
+                and ebx, LVSIO_NOTIFY_NMRCLICK
+                .IF ebx == LVSIO_NOTIFY_NMRCLICK
+                    mov dwNotifyCode, NM_RCLICK
+                .ELSE
+                    mov ebx, dwOptions
+                    and ebx, LVSIO_NOTIFY_NMRDBLCLK
+                    .IF ebx == LVSIO_NOTIFY_NMRDBLCLK
+                        mov dwNotifyCode, NM_RDBLCLK
+                    .ENDIF
+                .ENDIF
+            .ENDIF
+        .ENDIF
+    .ENDIF
+    
     
     Invoke SendMessage, hListview, LVM_ENSUREVISIBLE, nNextItem, TRUE
     Invoke ListViewEnsureSubItemVisible, hListview, nNextSubItem
@@ -944,7 +1063,8 @@ LVSIE_SetNextItem PROC USES EBX dwRefData:DWORD, dwDirection:DWORD
     lea ebx, lvsienmia
     mov eax, hListview
     mov [ebx].NMITEMACTIVATE.hdr.hwndFrom, eax
-    mov [ebx].NMITEMACTIVATE.hdr.code, NM_CLICK
+    mov eax, dwNotifyCode
+    mov [ebx].NMITEMACTIVATE.hdr.code, eax ;NM_CLICK
     mov eax, nNextItem
     mov [ebx].NMITEMACTIVATE.iItem, eax
     mov eax, nNextSubItem

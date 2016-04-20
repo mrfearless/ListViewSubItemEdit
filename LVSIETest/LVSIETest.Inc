@@ -25,6 +25,16 @@ includelib masm32.lib
 include ListViewSubItemEdit.inc
 includelib ListViewSubItemEdit.lib
 
+IFNDEF LVSUBITEMEDIT ; included for ease of use during coding if structure is present in same file radasm can show the elements of it
+LVSUBITEMEDIT               STRUCT
+    dwControlType           DD ?    ; (Required) see table below for types. Note not all supported yet.
+    lpControlInitProc       DD ?    ; (Optional) pointer to custom function for initilization. Return true to continue or false - which exits control and destroys it
+    lpControlProc           DD ?    ; (Optional) pointer to custom callback proc for handling WM_CHAR, WM_KEYDOWN and WM_COMMAND. Return true to continue or false to prevent. 
+    lpControlValidProc      DD ?    ; (Optional) pointer to custom function for validation of control before it closes. Return true to continue or false to prevent.
+    dwOptions               DD ?    ; Combination of option flags, see below for more info.
+    lParam                  DD ?    ; (Optional) custom value to pass, for use in lpControlInitProc proc
+LVSUBITEMEDIT               ENDS
+ENDIF
 
 ;-----------------------------------------------------------------------------------------
 ; LVSIETest Prototypes
@@ -62,6 +72,7 @@ ClassName				DB 'DLGCLASS',0
 AppName					DB 'LTLI Dialog',0
 AboutMsg				DB 'www.LetTheLight.in',13,10,'Copyright © fearless 2014',0
 lvsie                   LVSUBITEMEDIT <>
+lvsie_data              LVSUBITEMEDIT <LVSIC_EDIT,NULL,NULL,NULL,TRUE,0>
 szOne                   DB '01',0
 sz99                    DB '99',0
 ;nmia                    NMITEMACTIVATE <>

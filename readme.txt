@@ -2,7 +2,7 @@
 
  README & LICENSE
 
- ListViewSubItemEdit v1.0.0.3 by fearless
+ ListViewSubItemEdit v1.0.0.4 by fearless
 
  Copyright (c) 2016 by KSR aka fearless
 
@@ -55,6 +55,24 @@
  ----------------------------------------------------------------------------------------
  HISTORY
  ----------------------------------------------------------------------------------------
+
+ v1.0.0.4
+ --------
+ Release    - Re-arranged LVSUBITEMEDIT structure and changed ListViewSubItemEdit proc
+              to use params for hListivew, dwItem and dwSubItem instead of passing them
+              with the older verison of the LVSUBITEMEDIT structure.
+            - Removed dwWrapAround feild and replaced it with a dwOptions field and added
+              a number of defined constants for those options: Wrapping options 
+              (previously dwWrapAround) and enhanced that with wrapping horizontally, 
+              vertically or both; Key Navigation: tab keys, arrow keys or both; notify
+              message option sent for navigation: nm_click, nm_dblclk, nm_rclick or 
+              nm_rdblclk.
+            - Changed lpControlProc for return value of processed messages: TRUE
+              processes as default with whatever was in wParam at the time, FALSE to 
+              reject the message, or >1 to replace wParam with.
+            - Added WM_PASTE as a message sent to user's lpControlProc function.
+
+
 
  v1.0.0.3
  --------

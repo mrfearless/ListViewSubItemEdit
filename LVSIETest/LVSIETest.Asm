@@ -117,26 +117,41 @@ WndProc proc hWin:HWND,uMsg:UINT,wParam:WPARAM,lParam:LPARAM
 	        .IF eax == NM_CLICK
 	            Invoke ListViewGetItemClicked, hTESTLV, lParam, Addr iItem, Addr iSubItem ; fetch what was clicked in listview
 	            .IF eax == TRUE
-	                lea ebx, lvsie
-	                mov eax, iItem
-	                mov [ebx].LVSUBITEMEDIT.iItem, eax
-	                mov eax, iSubItem
-	                mov [ebx].LVSUBITEMEDIT.iSubItem, eax
-	                mov eax, hTESTLV
-	                mov [ebx].LVSUBITEMEDIT.hListview, eax
-	                mov eax, hWin
-	                mov [ebx].LVSUBITEMEDIT.hParent, eax
-	                mov eax, LVSIC_EDIT
-	                mov [ebx].LVSUBITEMEDIT.dwControlType, eax
-	                lea eax, TestEditInitProc ; or mov eax, offset TestEditInitProc
-	                mov [ebx].LVSUBITEMEDIT.lpControlInitProc, eax
-	                lea eax, TestEditProc
-	                mov [ebx].LVSUBITEMEDIT.lpControlProc, eax
-	                lea eax, TestEditValidProc
-	                mov [ebx].LVSUBITEMEDIT.lpControlValidProc, eax
-	                mov eax, TRUE
-	                mov [ebx].LVSUBITEMEDIT.dwAllowWraparound, eax
-	                Invoke ListViewSubItemEdit, Addr lvsie ; create our sub item edit control and pass control to it
+;	            
+;	                mov eax, iItem
+;	                mov lvsie.iItem, eax 
+;	                mov eax, iSubItem
+;	                mov lvsie.iSubItem, eax
+;	                mov eax, hTESTLV
+;	                mov lvsie.hListview, eax
+;	                mov eax, hWin
+;	                mov lvsie.hParent, eax
+;	                mov lvsie.lpControlInitProc, offset TestEditInitProc
+;	                mov lvsie.lpControlProc, offset TestEditProc
+;	                mov lvsie.lpControlValidProc, offset TestEditValidProc
+	            
+                lea ebx, lvsie
+                ;mov eax, iItem
+                ;mov [ebx].LVSUBITEMEDIT.iItem, eax
+                ;mov eax, iSubItem
+                ;mov [ebx].LVSUBITEMEDIT.iSubItem, eax
+                ;mov eax, hTESTLV
+                ;mov [ebx].LVSUBITEMEDIT.hListview, eax
+                ;mov eax, hWin
+                ;mov [ebx].LVSUBITEMEDIT.hParent, eax
+                mov eax, LVSIC_EDIT
+                mov [ebx].LVSUBITEMEDIT.dwControlType, eax
+                lea eax, TestEditInitProc ; or mov eax, offset TestEditInitProc
+                mov [ebx].LVSUBITEMEDIT.lpControlInitProc, eax
+                lea eax, TestEditProc
+                mov [ebx].LVSUBITEMEDIT.lpControlProc, eax
+                lea eax, TestEditValidProc
+                mov [ebx].LVSUBITEMEDIT.lpControlValidProc, eax
+                ;mov eax, TRUE
+                ;mov [ebx].LVSUBITEMEDIT.dwAllowWraparound, eax
+                mov eax, LVSIO_NAV_ALL or LVSIO_WRAP_ALL or LVSIO_NOTIFY_NMCLICK
+                mov [ebx].LVSUBITEMEDIT.dwOptions, eax
+                Invoke ListViewSubItemEdit, hTESTLV, iItem, iSubItem, Addr lvsie ; create our sub item edit control and pass control to it
 	            .ENDIF
 	        
 	        .ELSEIF eax == LVN_ITEMCHANGED
@@ -328,11 +343,34 @@ TestEditProc PROC hWin:HWND,uMsg:UINT,wParam:WPARAM,lParam:LPARAM,dwItem:DWORD,d
     
     .if uMsg==WM_CHAR
         
-        .IF dwSubItem == 3
+        .IF dwSubItem == 3 ; gender
             mov eax,wParam
-            .if al == "m" || al == "f" || al == "M" || al == "F"
+            .if al == "m" || al == "f" || al == "M" || al == "F" || al==VK_BACK
                 mov eax, TRUE
             .ELSE
+                mov eax, FALSE
+            .ENDIF
+            ret
+        
+        .ELSEIF dwSubItem == 0 ; power
+            mov eax, wParam
+            .if al >= 97 && al <= 122 && al != " "
+                sub wParam, 32
+                mov eax, wParam
+            .else
+                .if al == VK_BACK
+                    mov eax, TRUE
+                .else
+                    mov eax, FALSE
+                .endif
+            .endif
+            ret
+        
+        .ELSEIF dwSubItem == 2 ; age
+            mov eax,wParam
+            .if (al>="0" && al<="9") || al==VK_BACK
+                mov eax, TRUE
+            .else
                 mov eax, FALSE
             .ENDIF
             ret
