@@ -22,7 +22,7 @@ v1.0.0.4 - Last updated: 20/04/2016 - Changed LVSUBITEMEDIT structure slightly, 
 * ListViewSubItemEdit.lib
 * readme.txt
 
-## How to use
+## Installation
 
 * Copy the ListViewSubItemEdit.lib to your masm32\lib folder
 * Copy the ListViewSubItemEdit.inc to your masm32\include folder
@@ -31,7 +31,9 @@ v1.0.0.4 - Last updated: 20/04/2016 - Changed LVSUBITEMEDIT structure slightly, 
     include ListViewSubItemEdit.inc
     includelib ListViewSubItemEdit.lib
 ```
-For example of usage see the ListViewSubItemEdit.inc file or download the LVSIETest RadASM Project
+## How to use
+
+See the Wiki entry [here](https://github.com/mrfearless/ListViewSubItemEdit/wiki/How-To-Use) or see the ListViewSubItemEdit.inc file, or download the LVSIETest RadASM test project
 
 
 ## Sites of interest
